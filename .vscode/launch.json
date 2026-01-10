@@ -1,0 +1,29 @@
+{
+    // 该文件是VS Code的调试配置文件（launch.json），用于配置Python程序的调试会话
+    // 更多配置说明可参考官方文档：https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0", // 调试配置文件的版本（VS Code调试器的标准版本）
+    "configurations": [ // 调试配置列表，可包含多个不同场景的调试配置
+        // 第一个调试配置：名称为pythonDebug
+        {
+            "name": "ldx_debug", // 配置名称，显示在VS Code调试面板的下拉菜单中，用于选择该配置
+            "type": "debugpy", // 调试器类型，使用Python官方调试器debugpy（VS Code Python插件依赖）
+            "request": "attach", // 调试请求类型为"附加"，即连接到已运行的Python进程（而非启动新进程）
+            "connect": {
+                "host": "localhost", // 目标进程所在主机（此处为本地机器）
+                "port": 2026 // 目标进程监听的调试端口（需与被调试进程的端口匹配）
+            },
+            "justMyCode": false // 设为false：调试时不仅跟踪用户代码，还会进入第三方库（如标准库、安装的包）代码
+        },
+        // // 第二个调试配置：名称为liuzgDebug（与第一个配置逻辑一致，仅端口不同）
+        // {
+        //     "name": "liudxDebug",   // 配置名称，用于区分不同的调试场景
+        //     "type": "debugpy",      // 同上，使用debugpy调试器
+        //     "request": "attach",    // 同上，采用"附加"方式调试已运行的进程
+        //     "connect": {
+        //         "host": "localhost",  // 同上，连接本地主机
+        //         "port": 8765          // 监听端口为8765（与第一个配置的5678区分，用于连接不同进程）
+        //     },
+        //     "justMyCode": false     // 同上，允许调试第三方库代码
+        // }
+    ]
+}

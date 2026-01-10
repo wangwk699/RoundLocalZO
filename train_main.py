@@ -28,7 +28,7 @@ from tasks import get_task
 from dataclasses import dataclass
 from transformers import HfArgumentParser, TrainingArguments, DataCollatorForTokenClassification
 from utils import *
-from trainer import ZOTrainer, QZOTrainer, QAZOTrainer, LocalzoTrainer
+from trainer import ZOTrainer, QZOTrainer, QAZOTrainer, RoundZOTrainer
 from torch.utils.data import Dataset
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 from metrics import calculate_metric
@@ -187,10 +187,9 @@ class OurArguments(TrainingArguments):
     act_shifts: Optional[str] = None  # activation shifts file
     train: bool = False  # enable training
 
-    # localzo相关
-    _lambda: float = 3.0 
+    # ldx:add
     delta: float = 0.1
-    sample_size: int = 5
+    t: float = 0.5
     
 
 # ldx:add:
@@ -343,51 +342,11 @@ class Framework:
                 tokenizer=self.tokenizer,
                 data_collator=DataCollatorWithPaddingAndNesting(self.tokenizer, pad_to_multiple_of=8) if self.args.train_as_classification else collator(self.tokenizer, pad_to_multiple_of=8)
             )
-        elif self.args.trainer == 'localzo' and self.args.quant_method != '':
+        elif (self.args.trainer == 'STE' or self.args.trainer == 'HTGE' or self.args.trainer == 'Uniform' or self.args.trainer == 'Normal' or self.args.trainer == 'Laplace') and self.args.quant_method != '':
             assert self.args.quant_method in ['gptq', 'omni','aqlm']            
             from transformers import Trainer
-            # set_quant_layers_training_phase(self.model, 'finetune')
-            # for name, param in self.model.named_parameters():
-            #     # print(name)
-            #     param.requires_grad = True
-            # 冻结参数信息：
-            # total_params = 0
-            # trainable_params = 0
-            # param_details = []
-            # for name, param in self.model.named_parameters():
-            #     num_params = param.numel()
-            #     total_params += num_params
-            #     if param.requires_grad:
-            #         trainable_params += num_params
-            #     param_info = {
-            #         'name': name,
-            #         'shape': tuple(param.shape),
-            #         'num_params': num_params,
-            #         'requires_grad': param.requires_grad,
-            #         'dtype': param.dtype,
-            #         'device': param.device
-            #     }
-            #     param_details.append(param_info)
-            #     if True:
-            #         grad_status = "✓可训练" if param.requires_grad else "✗冻结"
-            #         # print(f"{grad_status} | {name:50} | 形状: {str(param.shape):15} | 参数数量: {num_params:10,}")
-            # # print(f"可训练参数量:{trainable_params}")     
-            # print("冻结量化参数...")
-            # for name, param in self.model.named_parameters():
-            #     # 冻结所有量化相关参数
-            #     if any(keyword in name.lower() for keyword in ['quant', 'scale', 'zero', 'smooth', 'upbound', 'lowbound', 'descale', 'dezero']):
-            #         param.requires_grad = False
-            #         # print(f" 冻结: {name}")
-            # for name, param in self.model.named_parameters():
-            #     pass
-                # if param.requires_grad:
-                    # print(f"当前的可训练参数{name}")
-            # 小试一下，参数都禁掉会怎样？
-            # for name, param in self.model.named_parameters():
-            #     param.requires_grad = False
             for name, param in self.model.named_parameters():
                 if param.requires_grad:
-                    # print(f"当前的可训练参数{name}")
                     pass
             for name, param in self.model.named_parameters():
                 param.requires_grad = False
@@ -396,32 +355,8 @@ class Framework:
                     param.requires_grad = True
             for name, param in self.model.named_parameters():
                 if param.requires_grad:
-                    # print(f"当前的可训练参数{name}")
                     pass
-            # scale,zero,descale,dezero参数冻结,禁止动态计算
-            # quantizers = []
-            # for name, module in self.model.named_modules():
-            #     if isinstance(module, UniformAffineQuantizer):
-            #         quantizers.append((name, module))
-            # print(f"找到 {len(quantizers)} 个 UniformAffineQuantizer")
-            # success_count = 0
-            # for i, (name, quantizer) in enumerate(quantizers):
-            #     try:
-            #         if not hasattr(quantizer, 'dynamic_method'):
-            #             # print(f"[{i+1}] ❌ {name} 没有 dynamic_method 属性")
-            #             continue
-            #         original_value = quantizer.dynamic_method
-            #         quantizer.dynamic_method = "per_cluster"
-            #         if quantizer.dynamic_method == "per_cluster":
-            #             success_count += 1
-            #             # print(f"[{i+1}] ✅ {name}: {original_value} → per_cluster")
-            #         else:
-            #             # print(f"[{i+1}] ❌ {name} 修改失败，当前值: {quantizer.dynamic_method}")    
-            #             pass       
-            #     except Exception as e:
-            #         # print(f"[{i+1}] ❌ 修改 {name} 时出错: {e}")
-            #         pass
-            trainer = Trainer(
+            trainer = RoundZOTrainer(
                 model=self.model, 
                 args=self.args,
                 train_dataset=train_dataset, 
@@ -434,98 +369,7 @@ class Framework:
                 if param.requires_grad:
                     num_params = param.numel()
                     trainable_params += num_params
-            print(f"可训练参数量：{trainable_params}")
-        elif self.args.trainer == 'STE' and self.args.quant_method != '':
-            assert self.args.quant_method in ['gptq', 'omni','aqlm']            
-            from transformers import Trainer
-            # set_quant_layers_training_phase(self.model, 'finetune')
-            # for name, param in self.model.named_parameters():
-                # print(name)
-                # param.requires_grad = True
-            # 冻结参数信息：
-            # total_params = 0
-            # trainable_params = 0
-            # param_details = []
-            # for name, param in self.model.named_parameters():
-            #     num_params = param.numel()
-            #     total_params += num_params
-            #     if param.requires_grad:
-            #         trainable_params += num_params
-            #     param_info = {
-            #         'name': name,
-            #         'shape': tuple(param.shape),
-            #         'num_params': num_params,
-            #         'requires_grad': param.requires_grad,
-            #         'dtype': param.dtype,
-            #         'device': param.device
-            #     }
-            #     param_details.append(param_info)
-            #     if True:
-            #         grad_status = "✓可训练" if param.requires_grad else "✗冻结"
-                    # print(f"{grad_status} | {name:50} | 形状: {str(param.shape):15} | 参数数量: {num_params:10,}")
-            # print(f"可训练参数量:{trainable_params}")     
-            # print("冻结量化参数...")
-            # for name, param in self.model.named_parameters():
-                # 冻结所有量化相关参数
-                # if any(keyword in name.lower() for keyword in ['quant', 'scale', 'zero', 'smooth', 'upbound', 'lowbound', 'descale', 'dezero']):
-                #     param.requires_grad = False
-                    # print(f" 冻结: {name}")
-            for name, param in self.model.named_parameters():
-                if param.requires_grad:
-                    # print(f"当前的可训练参数{name}")
-                    pass
-            for name, param in self.model.named_parameters():
-                param.requires_grad = False
-            for name, param in self.model.named_parameters():
-                if any(keyword in name.lower() for keyword in ['descale']):
-                    param.requires_grad = True
-            for name, param in self.model.named_parameters():
-                if param.requires_grad:
-                    # print(f"当前的可训练参数{name}")
-                    pass
-            # 小试一下，参数都禁掉会怎样？
-            # for name, param in self.model.named_parameters():
-            #     param.requires_grad = False
-            # for name, param in self.model.named_parameters():
-            #     if param.requires_grad:
-            #         print(f"当前的可训练参数{name}")
-            # scale,zero,descale,dezero参数冻结,禁止动态计算
-            # quantizers = []
-            # for name, module in self.model.named_modules():
-            #     if isinstance(module, UniformAffineQuantizer):
-            #         quantizers.append((name, module))
-            # print(f"找到 {len(quantizers)} 个 UniformAffineQuantizer")
-            # success_count = 0
-            # for i, (name, quantizer) in enumerate(quantizers):
-            #     try:
-            #         if not hasattr(quantizer, 'dynamic_method'):
-            #             # print(f"[{i+1}] ❌ {name} 没有 dynamic_method 属性")
-            #             continue
-            #         original_value = quantizer.dynamic_method
-            #         quantizer.dynamic_method = "per_cluster"
-            #         if quantizer.dynamic_method == "per_cluster":
-            #             success_count += 1
-            #             # print(f"[{i+1}] ✅ {name}: {original_value} → per_cluster")
-            #         else:
-            #             # print(f"[{i+1}] ❌ {name} 修改失败，当前值: {quantizer.dynamic_method}")    
-            #             pass       
-            #     except Exception as e:
-            #         # print(f"[{i+1}] ❌ 修改 {name} 时出错: {e}")
-            #         pass
-            trainer = Trainer(
-                model=self.model, 
-                args=self.args,
-                train_dataset=train_dataset, 
-                eval_dataset=eval_dataset,
-                tokenizer=self.tokenizer,
-                data_collator=DataCollatorWithPaddingAndNesting(self.tokenizer, pad_to_multiple_of=8) if self.args.train_as_classification else collator(self.tokenizer, pad_to_multiple_of=8)
-            )
-            trainable_params = 0
-            for name, param in self.model.named_parameters():
-                if param.requires_grad:
-                    num_params = param.numel()
-                    trainable_params += num_params
-            print(f"可训练参数量：{trainable_params}")
+            print(f"trainable parameters:{trainable_params}")
         else:
             raise NotImplementedError()
 
@@ -555,6 +399,14 @@ class Framework:
         if self.args.save_model:
             logger.warn("Save model..")
             trainer.save_model()
+        
+        # ldx:add:record loss
+        loss_history = trainer.get_loss_history()
+        loss_df = trainer.get_loss_history(as_dataframe=True)
+        trainer.plot_loss_curve(f"{self.args.output_dir}/loss_curve.png", show=True)
+        # trainer.plot_learning_rate(f"{self.args.output_dir}/lr_curve.png", show=True)
+        trainer.print_loss_summary()
+        trainer.save_loss_history()
         
         # FSDP compatibility
         self.model = trainer.model 
@@ -775,7 +627,7 @@ def main():
         "metric": "fix0to1",
     }
 
-    if args.trainer == 'localzo':
+    if args.trainer == 'HTGE':
         quant_param_dicts = [
             args.weight_quant_params,
             args.act_quant_params,
@@ -785,9 +637,22 @@ def main():
             args.p_quant_params
         ]
         for param_dict in quant_param_dicts:
-            param_dict['_lambda'] = args._lambda
+            param_dict['t'] = args.t
+            param_dict['method'] = args.trainer
+
+    if args.trainer == 'Uniform' or args.trainer == 'Normal' or args.trainer == 'Laplace':
+        quant_param_dicts = [
+            args.weight_quant_params,
+            args.act_quant_params,
+            args.q_quant_params,
+            args.k_quant_params,
+            args.v_quant_params,
+            args.p_quant_params
+        ]
+        for param_dict in quant_param_dicts:
             param_dict['delta'] = args.delta
-            param_dict['sample_size'] = args.sample_size
+            param_dict['method'] = args.trainer
+
 
 
     if args.multigpu:

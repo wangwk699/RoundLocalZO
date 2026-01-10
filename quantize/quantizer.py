@@ -194,8 +194,8 @@ class UniformAffineQuantizer(nn.Module):
         lwc=False,
         disable_zero_point=True,
         delta=None,  # 零阶梯度估计的扰动幅度
-        _lambda=None,
-        sample_size=None
+        t=None,
+        method=None
     ):
         """
         support cluster quantize
@@ -251,19 +251,26 @@ class UniformAffineQuantizer(nn.Module):
 
         # ldx_add:
         self.delta = delta  # 零阶梯度估计的扰动幅度
-        self._lambda = _lambda
-        self.sample_size = sample_size
+        self.method = method
+        self.t = t
 
-        if self.delta is not None and self._lambda is not None and self.sample_size is not None:
-            self.round_module = RoundZOModule(delta, _lambda, sample_size)
-            # self._round_func = RoundZO.apply(delta, _lambda, sample_size)
+        if self.delta is not None and self.method == "Uniform":
+            self.round_module = UniformModule(delta)
+            # self._round_func = Uniform.apply(delta)
+        elif self.delta is not None and self.method == "Normal":
+            self.round_module = NormalModule(delta)
+            # self._round_func = Normal.apply(delta)
+        elif self.delta is not None and self.method == "Laplace":
+            self.round_module = LaplaceModule(delta)
+            # self._round_func = Laplace.apply(delta)
+        elif self.t is not None and self.method == "HTGE":
+            self.round_module = HTGEModule(t)
+            # self._round_func = HTGE.apply(t)
         else:
             self.round_module = RoundSTE()
             # self._round_func = round_ste
-            self._round_func = roundSTE.apply
-        
-        # if hasattr(self, 'descale') :
-        #     nn.init.zeros_(self.descale)  # 初始化为0，表示无偏移
+            # self._round_func = roundSTE.apply
+
 
     def change_n_bits(self, n_bits):
         self.n_bits = n_bits
@@ -299,22 +306,7 @@ class UniformAffineQuantizer(nn.Module):
             assert len(x.shape)==2, "only support linear layer now"
             dim1, dim2 = x.shape
             x = x.reshape(-1, self.group_size)
-        # if self.descale is not None and self.group_scale:
-        #     assert len(x.shape)==2, "only support linear layer now"
-        #     dim1, dim2 = x.shape
-        #     x = x.reshape(-1, self.group_scale)
-        # x_int = round_ste(x / scale)
-        #x_int = round_ste(x / eff_scale)
-        # ldx_add:
-        # if self.delta is not None and self._lambda is not None and self.sample_size is not None:
-        #     x_int = self._round(x / scale, self.delta, self._lambda, self.sample_size) # 先用scale去做。
-        # else:
-        #     x_int = self._round(x / scale)
-        # x_int = self.round_module.forward(x / eff_scale)
-        # x_int = self._round_func(x / eff_scale)
-        # x_int = self._round_func(x * (1.0 / eff_scale.clamp(min=CLIPMIN)))
-        # x_int = self._round_func(x * (1.0 / eff_scale.clamp(min=CLIPMIN)))
-        # x_int = self._round_func(x * (1.0 / scale))
+
         x_int = self.round_module.forward(x * (1.0 / eff_scale))
         # x_int = self.round_module.forward(x * (1.0 / scale))
         # x_int = self._round_func(x / scale)
@@ -371,10 +363,6 @@ class UniformAffineQuantizer(nn.Module):
             # pass 
         # x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
         x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
-        # x_dequant = self.fake_quant(x, self.scales, self.zeros)
-        # x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
-        # ldx:add:
-        # x_dequant = self.fake_quant(x, self.scale, self.zeros)
         
         return x_dequant
 
@@ -431,67 +419,13 @@ class UniformAffineQuantizer(nn.Module):
         del self.scale
         del self.round_zero_point
 
-# class RoundZO(torch.autograd.Function):
-#     @staticmethod
-#     def forward(ctx, x, delta, _lambda, sample_size):
-#         out = torch.round(x)
-#         ctx.save_for_backward(x)
-#         ctx.delta = delta
-#         ctx._lambda = _lambda
-#         ctx.sample_size = sample_size
-#         return out
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         (x,) = ctx.saved_tensors
-#         delta = ctx.delta
-#         original_shape = x.shape
-#         x_flat = x.view(-1)
-#         sample_size = ctx.sample_size
-#         _lambda = ctx._lambda
-#         grad_input = torch.zeros_like(x_flat)
-#         for i in range(x_flat.numel()):
-#             # u = x_flat[i].item()
-#             u = x_flat[i]
-#             k = torch.round(u - 0.5)
-#             b = k + 0.5
-#             v = u - b
-#             z_samples = []
-#             for _ in range(sample_size):
-#                 z = (2 * _lambda) * torch.rand(1) - _lambda
-#                 z = z.item()
-#                 # ldx_add:必要条件？不满足条件怎么办？
-#                 while abs(z) >= (1/(2*delta)):
-#                     # z = torch.randn(1).item()
-#                     z = (2 * _lambda) * torch.rand(1) - _lambda
-#                     z = z.item()
-#                 z_samples.append(z)
-#             grad_est = 0
-#             # ldx_add:梯度估计的正负,公式中乘以z了。
-#             for z in z_samples:
-#                 abs_z = abs(z)
-#                 abs_v = abs(v)
-#                 if abs_z < abs_v / delta:
-#                     grad_contrib = 0
-#                 elif abs_z < 1/(2*delta) and abs_z >= (abs_v/delta):
-#                     grad_contrib = (abs_z/(2*delta)) 
-#                 else:
-#                     grad_contrib = 0
-#                 grad_est += grad_contrib
-#             grad_est /= sample_size
-#             grad_input[i] = grad_est
-#         grad_input = grad_input.view(original_shape) * grad_output
-#         return grad_input, None, None, None
-    
-
 # 向量化加速版本
-class RoundZO(torch.autograd.Function):
+class Uniform(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, delta, _lambda, sample_size):
+    def forward(ctx, x, delta):
         out = torch.round(x)
         ctx.save_for_backward(x)
         ctx.delta = delta
-        ctx._lambda = _lambda
-        ctx.sample_size = sample_size
         return out
     
     @staticmethod
@@ -536,17 +470,11 @@ class RoundZO(torch.autograd.Function):
         """
         反向传播：使用显式表达式计算代理梯度
         """
-        # import pdb; pdb.set_trace()
-        # 简单的调试标记 - 在这里添加VS Code条件断点
-        import os
-        if os.getenv('DEBUG_ROUNDZO') == '1':
-            _debug_flag = True  # 在这里添加断点，条件：os.getenv('DEBUG_ROUNDZO') == '1'
-        
-        (x,) = ctx.saved_tensors
+        (x, ) = ctx.saved_tensors
         delta = ctx.delta
-        _lambda = ctx._lambda
+        _lambda = 3.0
         # 按_lambda=3计算
-        
+        # print(f"Uniform")
         # 计算v(u) = u - b(u)，其中b(u)是最近的半整数点
         # b(u) = round(u - 0.5) + 0.5
         b = torch.round(x - 0.5) + 0.5
@@ -583,7 +511,7 @@ class RoundZO(torch.autograd.Function):
             grad_input = torch.where(condition, explicit_grad, grad_input)
         
         # 返回梯度，乘以上游梯度
-        return grad_input * grad_output, None, None, None
+        return grad_input * grad_output, None
 
 
 
@@ -597,454 +525,299 @@ class RoundSTE(nn.Module):
     def extra_repr(self):
         return "round_ste"
 
-class RoundZOModule(nn.Module):
-    def __init__(self, delta, _lambda, sample_size):
+class UniformModule(nn.Module):
+    def __init__(self, delta):
         super().__init__()
         self.delta = delta
-        self._lambda = _lambda
-        self.sample_size = sample_size
         
     def forward(self, x):
-        return RoundZO.apply(x, self.delta, self._lambda, self.sample_size)
+        return Uniform.apply(x, self.delta)
     
     def extra_repr(self):
-        return f"RoundZO(delta={self.delta}, lambda={self._lambda}, sample_size={self.sample_size})"
+        return f"Uniform(delta={self.delta})"
+    
+
+class NormalModule(nn.Module):
+    def __init__(self, delta):
+        super().__init__()
+        self.delta = delta
+        
+    def forward(self, x):
+        return Normal.apply(x, self.delta)
+    
+    def extra_repr(self):
+        return f"Normal(delta={self.delta})"
     
 
 
-# class UniformAffineQuantizerZO(nn.Module):
-#     def __init__(
-#         self,
-#         n_bits: int = 8,
-#         symmetric: bool = False,
-#         per_channel_axes=[],
-#         metric="minmax",
-#         dynamic=False,
-#         dynamic_method="per_cluster",
-#         group_size=None,
-#         shape=None,
-#         lwc=False,
-#         disable_zero_point=False,
-#         delta=0.1,  # 零阶梯度估计的扰动幅度
-#         _lambda=3,
-#         sample_size=5
-#     ):
-#         super().__init__()
-#         self.symmetric = symmetric
-#         self.disable_zero_point = disable_zero_point
-#         assert 2 <= n_bits <= 16, "bitwidth not supported"
-#         self.n_bits = n_bits
-#         if self.disable_zero_point:
-#             self.qmin = -(2 ** (n_bits - 1))
-#             self.qmax = 2 ** (n_bits - 1) - 1
-#         else:
-#             self.qmin = 0
-#             self.qmax = 2 ** (n_bits) - 1
-#         self.per_channel_axes = per_channel_axes
-#         self.metric = metric
-#         self.cluster_counts = None
-#         self.cluster_dim = None
-#         self.scale = None
-#         self.zero_point = None
-#         self.round_zero_point = None
-#         self.descale = None
-#         self.dezero = None
-#         self.group_zero = 2
-#         self.group_scale = 2
-#         self.cached_xmin = None
-#         self.cached_xmax = None
-#         self.dynamic = dynamic
-#         self.dynamic_method = dynamic_method
-#         self.deficiency = 0
-#         self.lwc = lwc
-#         init_value = 4.             # inti value of learnable weight clipping
-#         if lwc:
-#             if group_size:
-#                 dim1 = int(shape[0]*math.ceil(shape[1]/group_size))
-#                 self.deficiency = shape[-1]%group_size
-#                 if self.deficiency > 0:
-#                     self.deficiency = group_size - self.deficiency
-#                     assert self.symmetric   # support for mlc-llm symmetric quantization
-#             else:
-#                 dim1 = shape[0]
-#             self.upbound_factor = nn.Parameter(torch.ones((dim1,1))*init_value)
-#             self.lowbound_factor = nn.Parameter(torch.ones((dim1,1))*init_value)
-#         self.sigmoid = nn.Sigmoid()
-#         self.enable = True
-#         self.group_size = group_size
-
-#         self.delta = delta  # 零阶梯度估计的扰动幅度
-#         self._lambda = _lambda
-#         self.sample_size = sample_size
-#         # 使用我们的零阶梯度估计round函数
-#         self.round_zo = RoundZO.apply
-
-#     def change_n_bits(self, n_bits):
-#         self.n_bits = n_bits
-#         if self.disable_zero_point:
-#             self.qmin = -(2 ** (n_bits - 1))
-#             self.qmax = 2 ** (n_bits - 1) - 1
-#         else:
-#             self.qmin = 0
-#             self.qmax = 2 ** (n_bits) - 1
+class LaplaceModule(nn.Module):
+    def __init__(self, delta):
+        super().__init__()
+        self.delta = delta
+        
+    def forward(self, x):
+        return Laplace.apply(x, self.delta)
     
-#     def fake_quant(self, x, scale, round_zero_point):
-#         """
-#         伪量化函数，使用零阶梯度估计的round
-#         """
-#         if self.deficiency > 0:
-#             pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-#             x = torch.cat((x,pad_zeros),dim=1)
-#         if self.descale is not None:
-#             eff_scale = (scale + self.descale)
-#         else:
-#             eff_scale = scale
-            
-#         if self.group_size:
-#             assert len(x.shape)==2, "only support linear layer now"
-#             dim1, dim2 = x.shape
-#             x = x.reshape(-1, self.group_size)
-        
-#         # 使用零阶梯度估计的round函数替代round_ste
-#         # x_int = self.round_zo(x / eff_scale, self.delta)
-#         x_int = self.round_zo(x / scale, self.delta, self._lambda, self.sample_size) # 先用scale去做。
-        
-#         if round_zero_point is not None:
-#             x_int = x_int.add(round_zero_point)
-#         x_int = x_int.clamp(self.qmin, self.qmax)
-#         x_dequant = x_int
-#         if round_zero_point is not None:
-#             x_dequant = x_dequant.sub(round_zero_point)
-        
-#         # 添加反量化调整
-#         if self.descale is not None:
-#             x_dequant = x_dequant.view(x_dequant.shape[0],-1,self.group_scale)
-#             x_dequant = x_dequant.mul(scale.unsqueeze(-1).repeat(1,1,self.group_scale)+self.descale)
-#             x_dequant = x_dequant.view(x_dequant.shape[0],-1)
-#         else:
-#             x_dequant = x_dequant.mul(scale)
-        
-#         if self.dezero is not None:
-#             x_dequant = x_dequant.view(x_dequant.shape[0],-1,self.group_zero)
-#             x_dequant = x_dequant.add(self.dezero)
-#             x_dequant = x_dequant.view(x_dequant.shape[0],-1)
-        
-#         if self.group_size:
-#             x_dequant = x_dequant.reshape(dim1, dim2)
-        
-#         if self.deficiency > 0:
-#             x_dequant = x_dequant[:,:-self.deficiency]
-        
-#         return x_dequant
-    
-#     def forward(self, x: torch.Tensor):
-#         if self.n_bits >= 16 or not self.enable:
-#             return x
-#         if self.metric == "fix0to1":
-#             return x.mul_(2**self.n_bits-1).round_().div_(2**self.n_bits-1)
-
-#         if self.dynamic_method == "per_token" or self.dynamic_method == "per_channel":
-#             self.per_token_dynamic_calibration(x)
-#         else:
-#             raise NotImplementedError()   
-        
-#         # x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
-#         # ldx:add:
-#         x_dequant = self.fake_quant(x, self.scales, self.zeros)
-#         return x_dequant
-
-#     def per_token_dynamic_calibration(self, x):
-#         if self.group_size:
-#             if self.deficiency == 0:
-#                 x = x.reshape(-1,self.group_size)
-#             else:
-#                 pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-#                 x = torch.cat((x,pad_zeros),dim=1)
-#                 x = x.reshape(-1,self.group_size)
-#         reduce_shape = [-1]
-#         xmin = x.amin(reduce_shape, keepdim=True)
-#         xmax =  x.amax(reduce_shape, keepdim=True)
-#         if self.lwc:
-#             xmax = self.sigmoid(self.upbound_factor)*xmax
-#             xmin = self.sigmoid(self.lowbound_factor)*xmin
-#         if self.symmetric:
-#             abs_max = torch.max(xmax.abs(),xmin.abs())
-#             scale = abs_max / (2**(self.n_bits-1)-1)
-#             self.scale = scale.clamp(min=CLIPMIN, max=1e4)  
-#             zero_point = (2**(self.n_bits-1)-1)*torch.ones_like(self.scale)
-#         else:
-#             range = xmax - xmin
-#             scale = range / (2**self.n_bits-1)
-#             self.scale = scale.clamp(min=CLIPMIN, max=1e4)
-#             zero_point = -(xmin) / (self.scale)
-#         if self.disable_zero_point:
-#             self.round_zero_point = None
-#         else:
-#             self.round_zero_point = zero_point.clamp(min=-1e4, max=1e4).round()
-    
-#     def register_scales_and_zeros(self):
-#         self.register_buffer('scales', self.scale)
-#         self.register_buffer('zeros', self.round_zero_point)
-#         descale = torch.zeros_like(self.scale)
-#         self.descale = nn.Parameter(descale.unsqueeze(-1).repeat(1,1,self.group_scale))
-#         dezero = torch.zeros_like(self.round_zero_point)
-#         self.dezero = nn.Parameter(dezero.unsqueeze(-1).repeat(1,1,self.group_zero))
-#         del self.scale
-#         del self.round_zero_point
-
-
-
-
-# class UniformAffineQuantizer(nn.Module):
-#     def __init__(
-#         self,
-#         n_bits: int = 8,
-#         symmetric: bool = False,
-#         per_channel_axes=[],
-#         metric="minmax",
-#         dynamic=False,
-#         dynamic_method="per_cluster",
-#         group_size=None,
-#         shape=None,
-#         lwc=False,
-#         disable_zero_point=True,
-#         delta=None,  # 零阶梯度估计的扰动幅度
-#         _lambda=None,
-#         sample_size=None
-#     ):
-#         """
-#         support cluster quantize
-#         dynamic_method support per_token and per_cluster
-#         """
-#         super().__init__()
-#         self.symmetric = symmetric
-#         self.disable_zero_point = disable_zero_point
-#         assert 2 <= n_bits <= 16, "bitwidth not supported"
-#         self.n_bits = n_bits
-#         if self.disable_zero_point:
-#             self.qmin = -(2 ** (n_bits - 1))
-#             self.qmax = 2 ** (n_bits - 1) - 1
-#         else:
-#             self.qmin = 0
-#             self.qmax = 2 ** (n_bits) - 1
-#         self.per_channel_axes = per_channel_axes
-#         self.metric = metric
-#         self.cluster_counts = None
-#         self.cluster_dim = None
-
-#         self.scale = None
-#         self.zero_point = None
-#         self.round_zero_point = None
-#         self.descale = None
-#         # self.dezero = None
-#         # self.group_zero = 1
-#         # self.group_scale = 1
-
-#         self.cached_xmin = None
-#         self.cached_xmax = None
-#         self.dynamic = dynamic
-#         self.dynamic_method = dynamic_method
-#         self.deficiency = 0
-#         self.lwc = lwc
-        
-#         init_value = 4.             # inti value of learnable weight clipping
-#         if lwc:
-#             if group_size:
-#                 dim1 = int(shape[0]*math.ceil(shape[1]/group_size))
-#                 self.deficiency = shape[-1]%group_size
-#                 if self.deficiency > 0:
-#                     self.deficiency = group_size - self.deficiency
-#                     assert self.symmetric   # support for mlc-llm symmetric quantization
-#             else:
-#                 dim1 = shape[0]
-#             self.upbound_factor = nn.Parameter(torch.ones((dim1,1))*init_value)
-#             self.lowbound_factor = nn.Parameter(torch.ones((dim1,1))*init_value)
-#         self.sigmoid = nn.Sigmoid()
-
-#         self.enable = True
-#         self.group_size = group_size
-
-#         # ldx_add:
-#         self.delta = delta  # 零阶梯度估计的扰动幅度
-#         self._lambda = _lambda
-#         self.sample_size = sample_size
-
-#         if self.delta is not None and self._lambda is not None and self.sample_size is not None:
-#             self.round_module = RoundZOModule(delta, _lambda, sample_size)
-#             self._round_func = RoundZO.apply(delta, _lambda, sample_size)
-#         else:
-#             self.round_module = RoundSTE()
-#             self._round_func = round_ste
-
-
-#     def change_n_bits(self, n_bits):
-#         self.n_bits = n_bits
-#         if self.disable_zero_point:
-#             self.qmin = -(2 ** (n_bits - 1))
-#             self.qmax = 2 ** (n_bits - 1) - 1
-#         else:
-#             self.qmin = 0
-#             self.qmax = 2 ** (n_bits) - 1
-
-#     def fake_quant(self, x, scale, round_zero_point):
-#         # 保存原始形状
-#         original_shape = x.shape
-        
-#         # 1. 先处理padding
-#         if self.deficiency > 0:
-#             pad_zeros = torch.zeros((x.shape[0], self.deficiency), 
-#                                 dtype=x.dtype, device=x.device)
-#             x = torch.cat((x, pad_zeros), dim=1)
-        
-#         # 2. 处理分组
-#         if self.group_size:
-#             assert len(x.shape) == 2, "only support linear layer now"
-#             dim1, dim2 = x.shape
-#             x_grouped = x.reshape(-1, self.group_size)
-#         else:
-#             x_grouped = x
-        
-#         # 3. 确保scale数值稳定
-#         if scale is None:
-#             scale = self.scales if hasattr(self, 'scales') else torch.ones_like(x_grouped)
-        
-#         # 4. 处理descale（如果存在）
-#         if self.descale is not None:
-#             # 使用更稳定的log空间表示
-#             scale_safe = scale.clamp(min=CLIPMIN, max=1e4)
-#             log_scale = torch.log(scale_safe)
-            
-#             # 限制descale的范围避免爆炸
-#             log_descale = torch.clamp(self.descale, -10.0, 10.0)
-#             eff_scale = torch.exp(log_scale + log_descale)
-#         else:
-#             eff_scale = scale.clamp(min=CLIPMIN, max=1e4)
-        
-#         # 5. 安全的逆运算
-#         inv_eff_scale = 1.0 / eff_scale
-#         # 防止inf
-#         inv_eff_scale = torch.where(
-#             torch.isfinite(inv_eff_scale),
-#             inv_eff_scale,
-#             torch.zeros_like(inv_eff_scale)
-#         )
-        
-#         # 6. 量化（使用稳定的round）
-#         x_int = self.round_module.forward(x_grouped * inv_eff_scale)
-        
-#         # 7. 处理zero_point
-#         if round_zero_point is not None:
-#             round_zero_point_safe = torch.clamp(round_zero_point, self.qmin, self.qmax)
-#             x_int = x_int + round_zero_point_safe
-        
-#         # 8. 截断到量化范围
-#         x_int = torch.clamp(x_int, self.qmin, self.qmax)
-        
-#         # 9. 反量化
-#         x_dequant = x_int
-#         if round_zero_point is not None:
-#             x_dequant = x_dequant - round_zero_point_safe
-        
-#         x_dequant = x_dequant * eff_scale
-        
-#         # 10. 恢复形状
-#         if self.group_size:
-#             x_dequant = x_dequant.reshape(dim1, dim2)
-        
-#         # 11. 移除padding
-#         if self.deficiency > 0:
-#             x_dequant = x_dequant[:, :-self.deficiency]
-        
-#         # 12. 形状检查
-#         assert x_dequant.shape == original_shape, \
-#             f"Shape mismatch: {x_dequant.shape} vs {original_shape}"
-        
-#         return x_dequant
+    def extra_repr(self):
+        return f"Laplace(delta={self.delta})"
     
 
-#     def forward(self, x: torch.Tensor):
-#         if self.n_bits >= 16 or not self.enable:
-#             return x
+class HTGEModule(nn.Module):
+    def __init__(self, t):
+        super().__init__()
+        self.t = t
         
-#         if self.metric == "fix0to1":
-#             return x.mul_(2**self.n_bits-1).round_().div_(2**self.n_bits-1)
-        
-#         # 动态计算量化参数（完全不参与梯度）
-#         with torch.no_grad():
-#             if self.dynamic_method == "per_token" or self.dynamic_method == "per_channel":
-#                 x_detached = x.detach()
-#                 self.per_token_dynamic_calibration(x_detached)
-#             else:
-#                 raise NotImplementedError()
-        
-#         # 分离动态计算的参数，只传递值，不传递梯度
-#         if hasattr(self, 'scale') and self.scale is not None:
-#             scale_to_use = self.scale.detach().clone()
-#         elif hasattr(self, 'scales') and self.scales is not None:
-#             scale_to_use = self.scales.detach().clone()
-#         else:
-#             scale_to_use = None
-        
-#         if hasattr(self, 'round_zero_point') and self.round_zero_point is not None:
-#             zp_to_use = self.round_zero_point.detach().clone()
-#         elif hasattr(self, 'zeros') and self.zeros is not None:
-#             zp_to_use = self.zeros.detach().clone()
-#         else:
-#             zp_to_use = None
-        
-#         # 使用分离的参数进行fake_quant，但保留对可学习参数（如descale）的梯度
-#         x_dequant = self.fake_quant(x, scale_to_use, zp_to_use)
-        
-#         return x_dequant
+    def forward(self, x):
+        return HTGE.apply(x, self.t)
+    
+    def extra_repr(self):
+        return f"HTGE(delta={self.t})"
+    
 
-#     def per_token_dynamic_calibration(self, x):
-#         with torch.no_grad():
-#             if self.group_size:
-#                 if self.deficiency == 0:
-#                     x = x.reshape(-1,self.group_size)
-#                 else:
-#                     pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-#                     x = torch.cat((x,pad_zeros),dim=1)
-#                     x = x.reshape(-1,self.group_size)
-#             # if self.descale is not None and self.group_scale:
-#             #     if self.deficiency == 0:
-#             #         x = x.reshape(-1,self.group_scale)
-#             #     else:
-#             #         pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-#             #         x = torch.cat((x,pad_zeros),dim=1)
-#             #         x = x.reshape(-1,self.group_scale)
-#             reduce_shape = [-1]
-#             xmin = x.amin(reduce_shape, keepdim=True)
-#             xmax =  x.amax(reduce_shape, keepdim=True)
-#             if self.lwc:
-#                 xmax = self.sigmoid(self.upbound_factor)*xmax
-#                 xmin = self.sigmoid(self.lowbound_factor)*xmin
-#             if self.symmetric:
-#                 abs_max = torch.max(xmax.abs(),xmin.abs())
-#                 scale = abs_max / (2**(self.n_bits-1)-1)
-#                 self.scale = scale.clamp(min=CLIPMIN, max=1e4)
-#                 zero_point = (2**(self.n_bits-1)-1)*torch.ones_like(self.scale)
-#             else:
-#                 range = xmax - xmin
-#                 scale = range / (2**self.n_bits-1)
-#                 self.scale = scale.clamp(min=CLIPMIN, max=1e4)
-#                 zero_point = -(xmin) / (self.scale)
-#             if self.disable_zero_point:
-#                 self.round_zero_point = None
-#             else:
-#                 self.round_zero_point = zero_point.clamp(min=-1e4, max=1e4).round()
+# 向量化加速版本
+class Normal(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, delta):
+        out = torch.round(x)
+        ctx.save_for_backward(x)
+        ctx.delta = delta
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        反向传播：使用正态分布近似计算代理梯度
         
-#     def register_scales_and_zeros(self):
-#         self.register_buffer('scales', self.scale)
-#         self.register_buffer('zeros', self.round_zero_point)
-#         #add
-#         # print(f"{self.scale}")
-#         # print(f"self.scale is nan: {torch.isnan(self.scale).any()}")
-#         descale = torch.zeros_like(self.scale)
-#         # print(f"self.descale{descale}")
-#         self.descale = nn.Parameter(descale)
-#         # self.descale = nn.Parameter(descale.unsqueeze(-1).repeat(1,1,self.group_scale))
-#         # dezero = torch.zeros_like(self.round_zero_point)
-#         # self.dezero = nn.Parameter(dezero.unsqueeze(-1).repeat(1,1,self.group_zero))
-#         del self.scale
-#         del self.round_zero_point
+        公式对应：
+        给定公式：I = 1 / (2Φ(1/(2δ)) - 1) * 1/(δ√(2π)) * [exp(-(u - s(u))²/(2δ²)) - exp(-1/(8δ²))]
+        
+        其中：
+        - Φ是标准正态分布的累积分布函数(CDF)
+        - δ是正态分布的标准差
+        - s(u) = round(u - 0.5) + 0.5，即最近的半整数点
+        - u是输入值x
+        
+        这个公式是在条件2|z|δ ≤ 1下推导得到的，其中C = 1/(2δ)
+        
+        推导过程：
+        1. 令C = 1/(2δ)
+        2. 计算Φ(C)，即标准正态分布在C处的累积概率
+        3. 计算归一化因子：1/(2Φ(C) - 1)
+        4. 计算高斯核部分：1/(δ√(2π)) * exp(-(x - s(x))²/(2δ²))
+        5. 减去截断项：- 1/(δ√(2π)) * exp(-C²/2)
+           = - 1/(δ√(2π)) * exp(-1/(8δ²))
+        
+        最终梯度 = 归一化因子 * (高斯核 - 截断项)
+        
+        Args:
+            grad_output: 上游梯度
+        Returns:
+            grad_input: 输入x的梯度
+            None: delta的梯度（不计算）
+        """
+        # 从上下文中获取保存的张量和参数
+        (x, ) = ctx.saved_tensors
+        delta = ctx.delta
+        # print(f"normal")
+        
+        # 步骤1: 计算s(u) = round(u - 0.5) + 0.5，即最近的半整数点
+        # 这是公式中的s(u)函数，用于找到最近的半整数点
+        s_u = torch.round(x - 0.5) + 0.5
+        
+        # 步骤2: 计算C = 1/(2δ)
+        # 这是公式中的截断点
+        # C = 1.0 / (2.0 * delta)
+        C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
+        
+        # 步骤3: 计算Φ(C)，即标准正态分布在C处的累积分布函数值
+        # 使用误差函数erf计算标准正态分布CDF: Φ(x) = 0.5 * [1 + erf(x/√2)]
+        # Phi_C = 0.5 * (1.0 + torch.erf(C / math.sqrt(2.0)))
+        # Phi_C = 0.5 * (1.0 + torch.erf(C / torch.sqrt(torch.tensor(2.0, device=C.device, dtype=C.dtype))))
+        Phi_C = 0.5 * (1.0 + torch.erf(C / torch.sqrt(torch.tensor(2.0, device=x.device, dtype=x.dtype))))
+
+        # 步骤4: 计算归一化因子: 1/(2Φ(C) - 1)
+        # 这是公式中的归一化项，确保概率密度函数在截断后仍然归一化
+        normalization_factor = 1.0 / (2.0 * Phi_C - 1.0)
+        
+        # 步骤5: 计算高斯核部分: exp(-(x - s(x))²/(2δ²))
+        # 这是公式中的exp(-(u - s(u))²/(2δ²))项
+        gaussian_kernel = torch.exp(-(x - s_u) ** 2 / (2.0 * delta ** 2))
+        
+        # 步骤6: 计算截断项: exp(-C²/2) = exp(-1/(8δ²))
+        # 这是公式中的exp(-C²/2)项，其中C²/2 = 1/(8δ²)
+        truncation_term = torch.exp(-C ** 2 / 2.0)  # 等价于exp(-1/(8δ²))
+        
+        # 步骤7: 计算完整梯度表达式
+        # 根据公式: I = normalization_factor * 1/(δ√(2π)) * (gaussian_kernel - truncation_term)
+        # 其中1/(δ√(2π))是正态分布的归一化常数
+        normalizing_constant = 1.0 / (delta * math.sqrt(2.0 * math.pi))
+        
+        # 计算最终梯度
+        grad_input = normalization_factor * normalizing_constant * (gaussian_kernel - truncation_term)
+        
+        # 将上游梯度乘以本地梯度
+        # 这是链式法则的应用
+        grad_input = grad_input * grad_output
+        
+        # 返回梯度
+        # 第一个返回值是x的梯度，第二个是delta的梯度（这里不计算，返回None）
+        return grad_input, None
+    
+
+
+# 向量化加速版本
+class Laplace(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, delta):
+        out = torch.round(x)
+        ctx.save_for_backward(x)
+        ctx.delta = delta
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        反向传播：使用拉普拉斯分布近似计算代理梯度
+        
+        公式对应：
+        给定公式：I = 1/[2δ(1 - e^{-1/(√2δ)})] * [(a + 1/√2)e^{-√2a} - (1/(2δ) + 1/√2)e^{-1/(√2δ)}]
+        
+        其中：
+        - δ是拉普拉斯分布的尺度参数
+        - a = |u - s(u)|/δ，是归一化的距离
+        - s(u) = round(u - 0.5) + 0.5，即最近的半整数点
+        - u是输入值x
+        
+        这个公式是在条件2|z|δ/2 ≤ 1下推导得到的，其中C = 1/(2δ)
+        
+        推导过程：
+        1. 计算s(u) = round(u - 0.5) + 0.5
+        2. 计算归一化距离a = |u - s(u)|/δ
+        3. 计算分母：2δ(1 - e^{-1/(√2δ)})
+        4. 计算分子第一项：(a + 1/√2)e^{-√2a}
+        5. 计算分子第二项：(1/(2δ) + 1/√2)e^{-1/(√2δ)}
+        6. 计算完整梯度：I = 分母倒数 × (分子第一项 - 分子第二项)
+        
+        注意：拉普拉斯分布的概率密度函数为 f(x) = (1/(2δ)) * e^{-|x|/δ}
+        
+        Args:
+            grad_output: 上游梯度
+        Returns:
+            grad_input: 输入x的梯度
+            None: delta的梯度（不计算）
+        """
+        # 从上下文中获取保存的张量和参数
+        (x, ) = ctx.saved_tensors
+        delta = ctx.delta
+        # print(f"laplace")
+
+        # if not isinstance(delta, torch.Tensor):
+        #     delta_tensor = torch.tensor(delta, device=x.device, dtype=x.dtype)
+        # else:
+        #     delta_tensor = delta
+        
+        # 步骤1: 计算s(u) = round(u - 0.5) + 0.5，即最近的半整数点
+        # 这是公式中的s(u)函数，用于找到最近的半整数点
+        s_u = torch.round(x - 0.5) + 0.5
+        
+        # 步骤2: 计算归一化距离a = |u - s(u)|/δ
+        # 这是公式中的a，表示输入点到最近半整数点的归一化距离
+        a = torch.abs(x - s_u) / delta
+        
+        # 步骤3: 计算分母部分：2δ(1 - e^{-1/(√2δ)})
+        # 这是公式中的归一化常数分母
+        # sqrt_2 = math.sqrt(2.0)
+        sqrt_2 = torch.sqrt(torch.tensor(2.0, device=x.device, dtype=x.dtype))
+        denominator = 2.0 * delta * (1.0 - torch.exp(-1.0 / (sqrt_2 * delta)))
+        
+        # 步骤4: 计算分子第一项：(a + 1/√2)e^{-√2a}
+        # 这是公式中的(a + 1/√2)e^{-√2a}项
+        numerator_part1 = (a + 1.0 / sqrt_2) * torch.exp(-sqrt_2 * a)
+        
+        # 步骤5: 计算分子第二项：(1/(2δ) + 1/√2)e^{-1/(√2δ)}
+        # 这是公式中的(1/(2δ) + 1/√2)e^{-1/(√2δ)}项
+        # 注意：这一项与a无关，是常数项
+        constant_term = (1.0 / (2.0 * delta) + 1.0 / sqrt_2) * torch.exp(-1.0 / (sqrt_2 * delta))
+        
+        # 步骤6: 计算完整梯度表达式
+        # 根据公式：I = 1/分母 * (分子第一项 - 分子第二项)
+        grad_input = (numerator_part1 - constant_term) / denominator
+        
+        # 将上游梯度乘以本地梯度
+        # 这是链式法则的应用
+        grad_input = grad_input * grad_output
+        
+        # 返回梯度
+        # 第一个返回值是x的梯度，第二个是delta的梯度（这里不计算，返回None）
+        return grad_input, None
+
+
+
+# 向量化加速版本
+class HTGE(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, t):
+        out = torch.round(x)
+        ctx.save_for_backward(x)
+        ctx.t = t
+        return out
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        反向传播：使用HTGE近似梯度公式计算代理梯度
+        
+        公式对应：
+        根据公式(24): H(x) = (a+b)/2 + (1/2)*tanh(t*(x - (a+b)/2))
+        根据公式(25): ∂round(x)/∂x ≈ ∂H(x)/∂x = 1/2 * (1 - tanh^2(t*(x - (a+b)/2)))
+        
+        推导过程：
+        1. 令 u = t*(x - (a+b)/2)
+        2. 则 H(x) = (a+b)/2 + (1/2)*tanh(u)
+        3. ∂H/∂x = (1/2) * ∂tanh(u)/∂x
+        4. ∂tanh(u)/∂x = (1 - tanh^2(u)) * ∂u/∂x
+        5. ∂u/∂x = t
+        6. 所以 ∂H/∂x = (1/2) * (1 - tanh^2(u)) * t
+        7. 因此梯度公式为: t/2 * (1 - tanh^2(t*(x - (a+b)/2)))
+        
+        Args:
+            grad_output: 上游梯度
+        Returns:
+            grad_input: 输入x的梯度
+            None: t的梯度（不计算）
+        """
+        # 从上下文中获取保存的张量和参数
+        (x, ) = ctx.saved_tensors
+        t = ctx.t
+        # print(f"HTGE")
+        
+        # 计算a = floor(x), b = ceil(x)
+        # 使用torch.floor和torch.ceil获取向下和向上取整值
+        a = torch.floor(x)  # 公式中的floor(x)
+        b = torch.ceil(x)   # 公式中的ceil(x)
+        
+        # 计算中间点 mid = (a+b)/2
+        # 这是公式(24)中的(a+b)/2项
+        mid = (a + b) / 2.0
+        
+        # 计算u = t*(x - (a+b)/2)
+        # 这是公式中tanh的参数
+        u = t * (x - mid)
+        
+        # 计算tanh(u)和tanh^2(u)
+        # 使用torch.tanh计算双曲正切函数
+        tanh_u = torch.tanh(u)  # tanh(t*(x - (a+b)/2))
+        tanh_u_squared = tanh_u * tanh_u  # tanh^2(t*(x - (a+b)/2))
+        
+        # 根据公式(25)计算代理梯度
+        # 完整梯度公式: (t/2) * (1 - tanh^2(t*(x - (a+b)/2)))
+        # 注意：原始公式(25)可能缺少t因子，根据推导应该包含t
+        grad_input = (t / 2.0) * (1.0 - tanh_u_squared)
+        
+        # 将上游梯度乘以本地梯度
+        # 这是链式法则的应用
+        grad_input = grad_input * grad_output
+        
+        # 返回梯度
+        # 第一个返回值是x的梯度，第二个是t的梯度（这里不计算，返回None）
+        return grad_input, None

@@ -21,3 +21,4 @@ act_shifts/
 pre_quantized_models/
 temp.sh
 tmux_log/
+result/
