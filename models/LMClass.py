@@ -29,6 +29,14 @@ class LMClass(BaseLM):
 
         #self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False,legacy=False)
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
+        if self.tokenizer.pad_token is None:
+            if self.tokenizer.eos_token is not None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+                print("Setting pad_token is `eos_token`")
+            else:
+                self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+                print("Adding new pad_token is `[PAD]`")
         # self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=config.torch_dtype)
         self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=torch.float16)
         self.seqlen = self.model.config.max_position_embeddings

@@ -627,6 +627,7 @@ class Normal(torch.autograd.Function):
         # 步骤2: 计算C = 1/(2δ)
         # 这是公式中的截断点
         # C = 1.0 / (2.0 * delta)
+        # 这个位置可能得改。
         C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
         
         # 步骤3: 计算Φ(C)，即标准正态分布在C处的累积分布函数值

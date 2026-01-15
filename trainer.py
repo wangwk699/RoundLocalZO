@@ -3800,8 +3800,8 @@ class RoundZOTrainer(Trainer):
                 ax1.grid(True, alpha=0.3)
                 
                 # 如果 loss 变化很大，使用对数刻度
-                if max(train_losses) / min(train_losses) > 100 and min(train_losses) > 0:
-                    ax1.set_yscale('log')
+                # if max(train_losses) / min(train_losses) > 100 and min(train_losses) > 0:
+                #     ax1.set_yscale('log')
             
             # # 准备评估数据
             # if self.eval_loss_history:

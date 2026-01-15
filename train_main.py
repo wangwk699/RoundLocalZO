@@ -723,6 +723,9 @@ def main():
     #chents_add
     if 'opt' in args.model.lower():
         lm.tokenizer.bos_token_id = 0
+    # ldx:add for llama
+    if "llama" in args.model.lower():
+        lm.tokenizer.pad_token_id = 0 # technically <unk>
     #chents_train
     #train_args = parse_args()
     set_seed(args.seed)

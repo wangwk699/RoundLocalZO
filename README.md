@@ -66,6 +66,8 @@ We provide pre-trained Omniquant model zoo for multiple model families, includin
 
 You can download the pre-trained OmniQuant parameters you need at [Huggingface](https://huggingface.co/ChenMnZ/OmniQuant/tree/main).
 
+链接：https://huggingface.co/ChenMnZ/OmniQuant/tree/main
+
 The detailed support list:
 
 

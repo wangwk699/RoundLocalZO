@@ -137,27 +137,28 @@
 
 # SST2 CB WSC WIC
 # STE HTGE Uniform Normal Laplace
-METHOD=HTGE
+METHOD=STE
 TASK=SST2                  
 STEPS=500
 GROUP_NUM=1
 IR=1e-7
 DELTA=0.285 # Uniform Normal Laplace
 T=0.5 # HTGE
+MODEL=Llama-2-7b
 
 CUDA_VISIBLE_DEVICES=6 python train_main.py \
-  --model facebook/opt-1.3b \
+  --model /home/liudongxu/RoundLocalZO-main/model/home/user/Workspace/Models/Llama-2-7b-hf \
   --epochs 0 \
-  --q_output_dir ./log/opt-1.3b-w4a16 \
+  --q_output_dir ./log/Llama-2-7b-w4a16 \
   --wbits 4 --lwc --let \
   --abits 16 \
-  --resume ./pre_quantized_models/opt-1.3b-w4a16.pth \
+  --resume ./pre_quantized_models/Llama-2-7b-w4a16.pth \
   --train \
   --train_as_classification True \
   --task_name "$TASK" \
   --trainer "$METHOD" \
   --max_steps "$STEPS" \
   --learning_rate "$IR" \
-  --output_dir "./log/$METHOD-$GROUP_NUM-$TASK-$STEPS-$IR-$DELTA-$T-1.3" \
+  --output_dir "./log/$MODEL/$METHOD-$GROUP_NUM-$TASK-$STEPS-$IR-$DELTA-$T" \
   --delta "$DELTA" \
   --t "$T"

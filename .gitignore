@@ -22,3 +22,8 @@ pre_quantized_models/
 temp.sh
 tmux_log/
 result/
+ldx_test.sh
+Llama-2-7b-hf.zip
+model/
+wandb/
+result/
