@@ -190,6 +190,7 @@ class OurArguments(TrainingArguments):
     # ldx:add
     delta: float = 0.1
     t: float = 0.5
+    use_sum: bool = False
     
 
 # ldx:add:
@@ -639,6 +640,7 @@ def main():
         for param_dict in quant_param_dicts:
             param_dict['t'] = args.t
             param_dict['method'] = args.trainer
+            # param_dict['use_sum'] = args.use_sum
 
     if args.trainer == 'Uniform' or args.trainer == 'Normal' or args.trainer == 'Laplace':
         quant_param_dicts = [
@@ -652,6 +654,7 @@ def main():
         for param_dict in quant_param_dicts:
             param_dict['delta'] = args.delta
             param_dict['method'] = args.trainer
+            param_dict['use_sum'] = args.use_sum
 
 
 

@@ -137,15 +137,16 @@
 
 # SST2 CB WSC WIC
 # STE HTGE Uniform Normal Laplace
-METHOD=HTGE
+METHOD=Normal
 TASK=SST2                  
 STEPS=500
 GROUP_NUM=1
 IR=1e-7
 DELTA=0.285 # Uniform Normal Laplace
 T=0.5 # HTGE
+USE_SUM=True
 
-CUDA_VISIBLE_DEVICES=6 python train_main.py \
+CUDA_VISIBLE_DEVICES=0 python train_main.py \
   --model facebook/opt-1.3b \
   --epochs 0 \
   --q_output_dir ./log/opt-1.3b-w4a16 \
@@ -158,6 +159,7 @@ CUDA_VISIBLE_DEVICES=6 python train_main.py \
   --trainer "$METHOD" \
   --max_steps "$STEPS" \
   --learning_rate "$IR" \
-  --output_dir "./log/$METHOD-$GROUP_NUM-$TASK-$STEPS-$IR-$DELTA-$T-1.3" \
+  --output_dir "./log/$METHOD-$GROUP_NUM-$TASK-$STEPS-$IR-$DELTA-$T-$USE_SUM" \
   --delta "$DELTA" \
+  --use_sum $USE_SUM \
   --t "$T"
