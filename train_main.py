@@ -191,6 +191,7 @@ class OurArguments(TrainingArguments):
     delta: float = 0.1
     t: float = 0.5
     use_sum: bool = False
+    train_batch_size: int = 4
     
 
 # ldx:add:
