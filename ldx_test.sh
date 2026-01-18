@@ -169,26 +169,26 @@
 
 
 
-# SST2 CB WSC WIC
+# SST2 CB WSC WIC SQuAD DROP Copa ReCoRD
 # STE HTGE Uniform Normal Laplace
 METHOD=Normal
-TASK=BoolQ                  
-STEPS=500
+TASK=SQuAD                  
+STEPS=5
 GROUP_NUM=1
 IR=1e-7
 DELTA=0.285 # Uniform Normal Laplace
 T=0.5 # HTGE
 USE_SUM=False
 
-CUDA_VISIBLE_DEVICES=0 python train_main.py \
-  --model facebook/opt-6.7b \
+CUDA_VISIBLE_DEVICES=2 python -m debugpy --listen 2026 --wait-for-client train_main.py \
+  --model facebook/opt-1.3b \
   --epochs 0 \
-  --q_output_dir ./log/opt-6.7b-w4a16 \
+  --q_output_dir ./log/opt-1.3b-w4a16 \
   --wbits 4 --lwc --let \
   --abits 16 \
-  --resume ./pre_quantized_models/opt-6.7b-w4a16.pth \
+  --resume ./pre_quantized_models/opt-1.3b-w4a16.pth \
   --train \
-  --train_as_classification True \
+  --train_as_classification False \
   --task_name "$TASK" \
   --trainer "$METHOD" \
   --max_steps "$STEPS" \
@@ -198,4 +198,6 @@ CUDA_VISIBLE_DEVICES=0 python train_main.py \
   --use_sum $USE_SUM \
   --t "$T" \
   --max_length 2048 \
-  --train_batch_size 2
+  --train_batch_size 1 \
+  --num_eval 10 \
+  --num_dev 1 \

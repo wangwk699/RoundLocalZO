@@ -158,6 +158,80 @@ class QuantOPTAttention(nn.Module):
                 attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min)
             )
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+            # ldx:add:
+            # # 1) 兼容 HF 可能传入的 2D mask: (bsz, src_len_total)
+            # #    或 4D mask: (bsz, 1, tgt_len_mask, src_len_mask)
+            # if attention_mask.dim() == 2:
+            #     # (bsz, src_len_mask) -> (bsz, 1, 1, src_len_mask)
+            #     attention_mask = attention_mask[:, None, None, :]
+            # elif attention_mask.dim() != 4:
+            #     raise ValueError(f"Unsupported attention_mask dim: {attention_mask.shape}")
+
+            # # 2) 对齐 src_len（KV cache 拼接后 key_states 的 src_len 可能变大）
+            # mask_src_len = attention_mask.size(-1)
+            # if mask_src_len != src_len:
+            #     if mask_src_len > src_len:
+            #         # 取最后 src_len，一般对应包含了最新的 token / past
+            #         attention_mask = attention_mask[..., -src_len:]
+            #     else:
+            #         # mask 比 src_len 短：在左侧补齐（补 0 或 -inf？取决于 mask 的定义）
+            #         # HF 的 4D attention_mask 通常是 0 或很小负数（-inf），用于加到 logits 上
+            #         pad_len = src_len - mask_src_len
+            #         attention_mask = torch.nn.functional.pad(attention_mask, (pad_len, 0), value=0.0)
+
+            # # 3) 对齐 tgt_len（生成时 tgt_len=1；有些实现的 mask 可能 tgt_len_mask=1 或更大）
+            # mask_tgt_len = attention_mask.size(-2)
+            # if mask_tgt_len != tgt_len:
+            #     if mask_tgt_len == 1:
+            #         # broadcast 即可，不用改
+            #         pass
+            #     elif mask_tgt_len > tgt_len:
+            #         attention_mask = attention_mask[..., -tgt_len:, :]
+            #     else:
+            #         # mask_tgt_len < tgt_len：补到 tgt_len
+            #         pad_len = tgt_len - mask_tgt_len
+            #         attention_mask = torch.nn.functional.pad(attention_mask, (0, 0, pad_len, 0), value=0.0)
+
+            # # 4) 加到 attn logits 上
+            # attn_weights = attn_weights.view(bsz, self.num_heads, tgt_len, src_len) + attention_mask
+
+            # # 5) clamp 避免 -inf 溢出（保持你原有逻辑）
+            # attn_weights = torch.max(
+            #     attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min, device=attn_weights.device)
+            # )
+            # attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+
+        # if attention_mask is not None:
+        #     # 放宽尺寸检查，支持生成任务
+        #     if attention_mask.dim() == 4:
+        #         # 对于 4D 掩码，只检查基本维度
+        #         if attention_mask.size(0) not in (1, bsz):
+        #             raise ValueError(
+        #                 f"Attention mask batch size {attention_mask.size(0)} "
+        #                 f"cannot broadcast to batch size {bsz}"
+        #             )
+        #         if attention_mask.size(1) not in (1, self.num_heads):
+        #             raise ValueError(
+        #                 f"Attention mask head dimension {attention_mask.size(1)} "
+        #                 f"cannot broadcast to {self.num_heads} heads"
+        #             )
+                
+        #         # 直接应用掩码，相信上游已经正确计算
+        #         attn_weights = (
+        #             attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
+        #             + attention_mask
+        #         )
+        #         attn_weights = torch.max(
+        #             attn_weights, 
+        #             torch.tensor(torch.finfo(attn_weights.dtype).min, device=attn_weights.device)
+        #         )
+        #         attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
+        #     else:
+        #         # 对于非 4D 掩码，报错（或转换）
+        #         raise ValueError(
+        #             f"Attention mask should be 4D, but got {attention_mask.dim()}D. "
+        #             f"Shape: {attention_mask.shape}"
+        #         )
 
         # upcast to fp32 if the weights are in fp16. Please see https://github.com/huggingface/transformers/pull/17437
         if attn_weights.dtype == torch.float16:
@@ -219,14 +293,7 @@ class QuantOPTAttention(nn.Module):
         for m in self.modules():
             if isinstance(m, (QuantLinear, QuantMatMul)):
                 m.set_quant_state(weight_quant, act_quant)
-
-
-
-
-
-
   
-
 class QuantOPTDecoderLayer(nn.Module):
     def __init__(
         self,
