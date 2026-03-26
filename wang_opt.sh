@@ -22,7 +22,7 @@ CUDA_VISIBLE_DEVICES=7 python train_main.py \
   --trainer "$METHOD" \
   --max_steps "$STEPS" \
   --learning_rate "$IR" \
-  --output_dir "./log/$METHOD-$GROUP_NUM-$TASK-$STEPS-$IR-$DELTA-$T-$USE_SUM" \
+  --output_dir "./log/opt-1.3b-$METHOD-$GROUP_NUM-$TASK-$STEPS-$IR-$DELTA-$T-$USE_SUM" \
   --delta "$DELTA" \
   --use_sum $USE_SUM \
   --t "$T" \
