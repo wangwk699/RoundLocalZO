@@ -26,3 +26,4 @@ ldx_test.sh
 Llama-2-7b-hf.zip
 model/
 wandb/demo.py
+demo.py
