@@ -11,13 +11,12 @@ USE_SUM=False
 MODEL=opt-1.3b
 BATCH_SIZE=1
 
-WBITS=2
+WBITS=3
 ABITS=16
 MAX_LENGTH=2048
 
 if [ "$WBITS" -eq 2 ]; then
     RESUME="./pre_quantized_models/$MODEL-w2a16g128.pth"
-    GROUP_SIZE=128
 elif [ "$WBITS" -eq 3 ]; then
     RESUME="./pre_quantized_models/$MODEL-w3a16.pth"
 elif [ "$WBITS" -eq 4 ]; then
@@ -43,7 +42,7 @@ fi
 SAVE_DIR="./log1/$MODEL-w${WBITS}a${ABITS}/$METHOD-$GROUP_NUM-MAX_LENGTH-$MAX_LENGTH-$TASK-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
 
 # --- 执行训练 ---
-CUDA_VISIBLE_DEVICES=4 python -m debugpy --listen 6001 --wait-for-client train_main.py \
+CUDA_VISIBLE_DEVICES=3 python -m debugpy --listen 6001 --wait-for-client train_main.py \
   --model "facebook/$MODEL" \
   --epochs 0 \
   --q_output_dir "$SAVE_DIR" \
@@ -62,5 +61,4 @@ CUDA_VISIBLE_DEVICES=4 python -m debugpy --listen 6001 --wait-for-client train_m
   --use_sum "$USE_SUM" \
   --t "$T" \
   --max_length "$MAX_LENGTH" \
-  --train_batch_size "$BATCH_SIZE" \
-#   --group_size "$GROUP_SIZE"
+  --train_batch_size "$BATCH_SIZE"

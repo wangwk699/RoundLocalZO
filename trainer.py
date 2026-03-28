@@ -3705,7 +3705,8 @@ class RoundZOTrainer(Trainer):
             'eval': self.eval_loss_history,
             'metadata': {
                 'total_steps': self.state.global_step,
-                'total_epochs': int(self.state.epoch) if hasattr(self.state, 'epoch') else 0,
+                # 'total_epochs': int(self.state.epoch) if hasattr(self.state, 'epoch') else 0,
+                'total_epochs': int(self.state.epoch) if hasattr(self.state, 'epoch') and self.state.epoch is not None else 0,
                 'save_time': time.time(),
                 'output_dir': self.args.output_dir,
                 'model_name': self.model.__class__.__name__ if hasattr(self.model, '__class__') else 'Unknown'

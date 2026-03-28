@@ -22,6 +22,8 @@ from quantize.int_linear import QuantLinear
 from quantize.quantizer import UniformAffineQuantizer
 
 import pdb
+import json
+import matplotlib.pyplot as plt
 
 import argparse
 from tasks import get_task
@@ -581,6 +583,8 @@ def main():
         args.net = args.model.split('/')[-1]
     # assert args.net in net_choices
     args.model_family = args.net.split('-')[0]
+
+    # 1. 加载原始模型
     lm = LMClass(args)
     lm.seqlen = 2048
     lm.model.eval()
@@ -696,6 +700,7 @@ def main():
             print("load act scales and shifts from ", args.act_scales, args.act_shifts)
             act_scales = torch.load(args.act_scales,weights_only=False)
             act_shifts = torch.load(args.act_shifts,weights_only=False)
+        # 2. 量化校准（引入 LWC/LET 参数）
         omniquant(
             lm,
             args,
@@ -708,6 +713,7 @@ def main():
         # for name, param in lm.model.named_parameters():
         #     # print(f"{name}")
         #     param.requires_grad = False
+    # 3. 清理辅助参数 + 保存（本代码段）
     if args.save_dir:
         # delete omni parameters
         for name, module in lm.model.named_modules():
@@ -762,7 +768,7 @@ def main():
                 else:
                     dev_samples = None
 
-                # Training
+                # Training  # 3. 可选：RoundLocalZO 微调（进一步优化舍入策略）
                 if args.train:
                     framework.train(train_samples, dev_samples if dev_samples is not None else eval_samples)
                 lm.model = framework.model  # Update the model after training
@@ -786,7 +792,7 @@ def main():
                     write_metrics_to_file(metrics, "result/" + result_file_tag(args) + f"-trainset{train_set_id}.json" if args.result_file is None else args.result_file)
 
     else:
-        # For each eval sample, there is a training set. no training is allowed
+        # For each eval sample, there is a training set. no training is allowed  对于每个评估样本，均对应一个训练集。不允许进行任何训练。
         # This is for in-context learning (ICL)
         assert args.trainer == "none"
         if args.num_eval is not None:
@@ -799,8 +805,93 @@ def main():
         if args.local_rank <= 0:
             write_metrics_to_file(metrics, "result/" + result_file_tag(args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)    
 
-    #evaluate(lm, args, logger)
+    # evaluate(lm, args, logger)
 
+    # ============================================================================
+    # ldx:add: 绘制 Loss 和 Grad_Norm 曲线图
+    # ============================================================================
+    def plot_training_metrics(output_dir):
+        """读取 loss_history.json 并绘制训练指标曲线"""
+        
+        loss_history_path = os.path.join(output_dir, "loss_history.json")
+        
+        if not os.path.exists(loss_history_path):
+            logger.warning(f"Loss history file not found: {loss_history_path}")
+            return
+        
+        # 读取 JSON 文件
+        with open(loss_history_path, 'r') as f:
+            history_data = json.load(f)
+        
+        # 提取 train 部分的数据
+        train_data = history_data.get("train", [])
+        
+        if not train_data:
+            logger.warning("No training data found in loss_history.json")
+            return
+        
+        # 提取 global_step, loss, grad_norm
+        steps = [item["global_step"] for item in train_data]
+        losses = [item["loss"] for item in train_data]
+        grad_norms = [item["grad_norm"] for item in train_data]
+        
+        # 创建画布，两个子图
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+        
+        # === 子图 1: Loss 曲线 ===
+        ax1.plot(steps, losses, 'b-', linewidth=1.5, label='Loss')
+        ax1.set_xlabel('Global Step', fontsize=12)
+        ax1.set_ylabel('Loss', fontsize=12)
+        ax1.set_title('Training Loss vs Global Step', fontsize=14, fontweight='bold')
+        ax1.legend(loc='upper right', fontsize=10)
+        ax1.grid(True, linestyle='--', alpha=0.7)
+        ax1.set_axisbelow(True)
+        
+        # 添加 Loss 统计信息
+        loss_min = min(losses)
+        loss_max = max(losses)
+        loss_avg = sum(losses) / len(losses)
+        loss_final = losses[-1]
+        ax1.text(0.02, 0.98, 
+                f'Min: {loss_min:.4f}\nMax: {loss_max:.4f}\nAvg: {loss_avg:.4f}\nFinal: {loss_final:.4f}',
+                transform=ax1.transAxes, fontsize=9, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # === 子图 2: Grad_Norm 曲线 ===
+        ax2.plot(steps, grad_norms, 'r-', linewidth=1.5, label='Grad Norm')
+        ax2.set_xlabel('Global Step', fontsize=12)
+        ax2.set_ylabel('Gradient Norm', fontsize=12)
+        ax2.set_title('Gradient Norm vs Global Step', fontsize=14, fontweight='bold')
+        ax2.legend(loc='upper right', fontsize=10)
+        ax2.grid(True, linestyle='--', alpha=0.7)
+        ax2.set_axisbelow(True)
+        
+        # 添加 Grad_Norm 统计信息
+        grad_min = min(grad_norms)
+        grad_max = max(grad_norms)
+        grad_avg = sum(grad_norms) / len(grad_norms)
+        grad_final = grad_norms[-1]
+        ax2.text(0.02, 0.98, 
+                f'Min: {grad_min:.4f}\nMax: {grad_max:.4f}\nAvg: {grad_avg:.4f}\nFinal: {grad_final:.4f}',
+                transform=ax2.transAxes, fontsize=9, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
+        
+        # 调整布局
+        plt.tight_layout()
+        
+        # 保存图片
+        save_path = os.path.join(output_dir, "training_metrics.png")
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        logger.info(f"Training metrics plot saved to: {save_path}")
+        
+        # 显示图片（可选，服务器环境建议注释掉）
+        # plt.show()
+        
+        plt.close()
+
+    # 在 main() 函数末尾调用
+    if args.train and not args.no_eval:
+        plot_training_metrics(args.output_dir)
 
 if __name__ == "__main__":
     print(sys.argv)

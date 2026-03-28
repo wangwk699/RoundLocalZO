@@ -19,6 +19,7 @@ class LMClass(BaseLM):
         self.model_name = args.model
         self.batch_size_per_gpu = args.batch_size
 
+        # 1. 加载配置与 Tokenizer
         self.model_config = args.model
         config = AutoConfig.from_pretrained(
             args.model, attn_implementation=args.attn_implementation
@@ -27,20 +28,30 @@ class LMClass(BaseLM):
         #     args.model
         # )
 
+        # 2. 处理 pad_token（关键！不同模型策略不同）
         #self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False,legacy=False)
         self.tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
         if self.tokenizer.pad_token is None:
             if self.tokenizer.eos_token is not None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token = self.tokenizer.eos_token   # OPT/Llama 常用
                 self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
                 print("Setting pad_token is `eos_token`")
             else:
-                self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+                self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})  # 回退方案
                 print("Adding new pad_token is `[PAD]`")
+
+        # 3. 加载模型（关键设计：先加载到 CPU + float16）
         # self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=config.torch_dtype)
-        self.model = AutoModelForCausalLM.from_pretrained(args.model, config=config, device_map='cpu',torch_dtype=torch.float16)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            args.model, 
+            config=config, 
+            device_map='cpu',           # ← 避免初始化时占满显存
+            dtype=torch.float16   # ← 节省内存，后续量化会进一步压缩  # torch_dtype=torch.float16
+        )
+
+        # 4. 初始化元信息
         self.seqlen = self.model.config.max_position_embeddings
-        self.model.eval()
+        self.model.eval()  # ← 默认评估模式，训练时由 Trainer 切换
         self.vocab_size = self.tokenizer.vocab_size
         print("vocab size: ", self.vocab_size)
 
