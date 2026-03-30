@@ -554,6 +554,7 @@ class Framework:
         return metrics
 
 def main():
+    start_time = time.time()  # 记录开始时间    
     args = parse_args()
     random.seed(args.quant_seed)
     np.random.seed(args.quant_seed)
@@ -713,6 +714,7 @@ def main():
         # for name, param in lm.model.named_parameters():
         #     # print(f"{name}")
         #     param.requires_grad = False
+
     # 3. 清理辅助参数 + 保存（本代码段）
     if args.save_dir:
         # delete omni parameters
@@ -806,6 +808,17 @@ def main():
             write_metrics_to_file(metrics, "result/" + result_file_tag(args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)    
 
     # evaluate(lm, args, logger)
+
+    # 【新增】记录执行时间并输出到日志
+    end_time = time.time()
+    execution_time = end_time - start_time
+    hours = int(execution_time // 3600)
+    minutes = int((execution_time % 3600) // 60)
+    seconds = execution_time % 60
+    logger.info(f"\n===== Execution Time =====")
+    logger.info(f"Total: {execution_time:.2f} seconds")
+    logger.info(f"Format: {hours}h {minutes}m {seconds:.2f}s")
+    logger.info(f"==========================")
 
     # ============================================================================
     # ldx:add: 绘制 Loss 和 Grad_Norm 曲线图

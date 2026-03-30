@@ -5,16 +5,17 @@ METHOD=STE              # STE HTGE Uniform Normal Laplace
 TASK=SST2               # SST2 RTE CB BoolQ WSC WIC   
 STEPS=5000
 IR=1e-5
-DELTA=0.05              # Uniform Normal Laplace
+DELTA=0.285              # Uniform Normal Laplace
 T=0.5                   # HTGE
 USE_SUM=False
 MODEL=opt-1.3b
 BATCH_SIZE=1
 
-WBITS=2
+WBITS=3
 ABITS=16
 MAX_LENGTH=2048
 
+# 根据 WBITS 选择 checkpoint
 if [ "$WBITS" -eq 2 ]; then
     RESUME="./pre_quantized_models/$MODEL-w2a16g128.pth"
     GROUP_SIZE=128
@@ -39,17 +40,20 @@ fi
 
 
 # 构建完整路径
-# 注意：保留了原脚本中 "GROUP_NUM-$GROUP_NUM" 的字符串格式
-SAVE_DIR="./log1/$MODEL-w${WBITS}a${ABITS}/$METHOD-$GROUP_NUM-MAX_LENGTH-$MAX_LENGTH-$TASK-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+# Zero-Shot-Q
+SAVE_DIR="./log1/$MODEL-w${WBITS}a${ABITS}/Zero-Shot-Q-weight2/$TASK-MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
 
-# --- 执行训练 ---
-CUDA_VISIBLE_DEVICES=4 python -m debugpy --listen 6001 --wait-for-client train_main.py \
+# 注意：保留了原脚本中 "GROUP_NUM-$GROUP_NUM" 的字符串格式
+# SAVE_DIR="./log1/$MODEL-w${WBITS}a${ABITS}/$METHOD-$GROUP_NUM-MAX_LENGTH-$MAX_LENGTH-$TASK-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+
+# --- 执行训练 ---  -m debugpy --listen 6001 --wait-for-client
+CUDA_VISIBLE_DEVICES=0 python train_main.py \
   --model "facebook/$MODEL" \
   --epochs 0 \
   --q_output_dir "$SAVE_DIR" \
   --wbits "$WBITS" \
   --abits "$ABITS" \
-  --lwc --let \
+  --lwc \
   --resume "$RESUME" \
   --train \
   --train_as_classification True \
