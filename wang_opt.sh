@@ -4,14 +4,14 @@
 METHOD=STE              # STE HTGE Uniform Normal Laplace
 TASK=SST2               # SST2 RTE CB BoolQ WSC WIC   
 STEPS=5000
-IR=1e-5
+IR=1e-7
 DELTA=0.285              # Uniform Normal Laplace
-T=0.5                   # HTGE
+T=16                   # HTGE
 USE_SUM=False
 MODEL=opt-1.3b
-BATCH_SIZE=1
+BATCH_SIZE=8
 
-WBITS=3
+WBITS=4
 ABITS=16
 MAX_LENGTH=2048
 
@@ -41,19 +41,19 @@ fi
 
 # 构建完整路径
 # Zero-Shot-Q
-SAVE_DIR="./log1/$MODEL-w${WBITS}a${ABITS}/Zero-Shot-Q-weight2/$TASK-MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+# SAVE_DIR="./log0/$MODEL-w${WBITS}a${ABITS}/Zero-Shot-Q-weight2/$TASK-MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
 
 # 注意：保留了原脚本中 "GROUP_NUM-$GROUP_NUM" 的字符串格式
-# SAVE_DIR="./log1/$MODEL-w${WBITS}a${ABITS}/$METHOD-$GROUP_NUM-MAX_LENGTH-$MAX_LENGTH-$TASK-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+SAVE_DIR="./log5/$MODEL-w${WBITS}a${ABITS}/$METHOD-$GROUP_NUM-MAX_LENGTH-$MAX_LENGTH-$TASK-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
 
 # --- 执行训练 ---  -m debugpy --listen 6001 --wait-for-client
-CUDA_VISIBLE_DEVICES=0 python train_main.py \
+CUDA_VISIBLE_DEVICES=1 python train_main.py \
   --model "facebook/$MODEL" \
   --epochs 0 \
   --q_output_dir "$SAVE_DIR" \
   --wbits "$WBITS" \
   --abits "$ABITS" \
-  --lwc \
+  --lwc --let\
   --resume "$RESUME" \
   --train \
   --train_as_classification True \
@@ -67,4 +67,7 @@ CUDA_VISIBLE_DEVICES=0 python train_main.py \
   --t "$T" \
   --max_length "$MAX_LENGTH" \
   --train_batch_size "$BATCH_SIZE" \
-#   --group_size "$GROUP_SIZE"
+  --save_strategy "no" \
+  --save_total_limit 0 \
+  --save_steps 999999 \
+  --evaluation_strategy "no" 

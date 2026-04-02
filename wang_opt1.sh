@@ -1,21 +1,25 @@
 #!/bin/bash
 
 # --- 基础配置 ---
-METHODS=("STE")                        # 遍历不同的梯度估计方法 "STE" "HTGE" "Uniform" "Normal"
+METHODS=("STE" "HTGE" "Uniform" "Normal")                        # 遍历不同的梯度估计方法 "STE" "HTGE" "Uniform" "Normal"
 TASK=SST2                                     # SST2 RTE CB BoolQ WSC WIC MultiRC
 STEPS=5000
-IRS=("1e-4")      # 遍历不同的学习率
+IRS=("1e-8" "5e-8" "1e-7" "5e-7" "1e-6")      # 遍历不同的学习率  ("1e-8" "5e-8" "1e-7" "5e-7" "1e-6")
 USE_SUM=False
-MODEL=Llama-2-7b
-BATCH_SIZE=8
+MODEL=opt-1.3b
+BATCH_SIZE=1
 WBITS=4
 ABITS=16
 MAX_LENGTH=2048
 
-if [ "$WBITS" -eq 3 ]; then
-    RESUME="./pre_quantized_models/Llama-2-7b-w3a16g.pth"
+# 根据 WBITS 选择 checkpoint
+if [ "$WBITS" -eq 2 ]; then
+    RESUME="./pre_quantized_models/$MODEL-w2a16g128.pth"
+    GROUP_SIZE=128
+elif [ "$WBITS" -eq 3 ]; then
+    RESUME="./pre_quantized_models/$MODEL-w3a16.pth"
 elif [ "$WBITS" -eq 4 ]; then
-    RESUME="./pre_quantized_models/Llama-2-7b-w4a16.pth"
+    RESUME="./pre_quantized_models/$MODEL-w4a16.pth"
 else
     echo "Error: WBITS=$WBITS not supported"
     exit 1
@@ -57,16 +61,16 @@ for METHOD in "${METHODS[@]}"; do
         echo "------------------------------------------"
         
         # 构建完整路径（包含 IR 信息）
-        SAVE_DIR="./log4/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+        SAVE_DIR="./log5/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
         
         # --- 执行训练 ---
         CUDA_VISIBLE_DEVICES=1 python train_main.py \
-            --model "meta-llama/$MODEL-hf" \
+            --model "facebook/$MODEL" \
             --epochs 0 \
             --q_output_dir "$SAVE_DIR" \
             --wbits "$WBITS" \
             --abits "$ABITS" \
-            --lwc \
+            --lwc --let\
             --resume "$RESUME" \
             --train \
             --train_as_classification True \

@@ -57,7 +57,7 @@ def omniquant(
     is_llama = False
     if "llama" in args.net.lower():
         is_llama = True
-        layers = model.model.layers
+        layers = model.model.layers  # (layers): ModuleList((0-23): 24 x OPTDecoderLayer(
         model.model.embed_tokens = model.model.embed_tokens.to(dev)
         model.model.norm = model.model.norm.to(dev)
         DecoderLayer = QuantLlamaDecoderLayer
@@ -102,10 +102,10 @@ def omniquant(
     layers[0] = layers[0].to(dev)
     if args.deactive_amp and args.epochs>0:
         dtype = torch.float
-        traincast = nullcontext
+        traincast = nullcontext      # 禁用 AMP，使用 float32
     else:
         dtype = torch.float16
-        traincast = torch.cuda.amp.autocast
+        traincast = torch.cuda.amp.autocast     # 启用 AMP，自动混合精度
     inps = torch.zeros(
         (args.nsamples, lm.seqlen, model.config.hidden_size), dtype=dtype, device=dev
     )
@@ -155,7 +155,7 @@ def omniquant(
         model.transformer.word_embeddings =  model.transformer.word_embeddings.cpu()
     else:
         raise ValueError("Only support for opt/llama/Llama-2/falcon/mixtral now")
-    torch.cuda.empty_cache()
+    torch.cuda.empty_cache()  # 防止显存溢出（OOM）, 清空 PyTorch 缓存中空闲的显存
 
     
     # same input of first layer for fp model and quant model

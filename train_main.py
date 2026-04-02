@@ -137,7 +137,7 @@ class OurArguments(TrainingArguments):
     # Additional parameters from the script
     train_set_seed: int = 42  # SEED 设置为 train_set_seed (默认值 0)
     result_file: str = None  # 如果没有指定，默认为 None
-    logging_steps: int = 10  # 脚本中设置了 --logging_steps 10
+    logging_steps: int = 125  # 脚本中设置了 --logging_steps 10   logging_steps = 1000 // BATCH_SIZE
     evaluation_strategy: str = "steps"  # 脚本中设置了 --evaluation_strategy steps
     save_strategy: str = "steps"  # 脚本中设置了 --save_strategy steps
     lr_scheduler_type: str = "constant"  # 脚本中设置了 --lr_scheduler_type linear

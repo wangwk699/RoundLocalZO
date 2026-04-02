@@ -14,9 +14,13 @@ temp/
 checkpoints/
 huggingface/
 log/
+log0/
 log1/
 log2/
 log3/
+log4/
+log5/
+log6/
 act_scales/
 act_shifts/
 pre_quantized_models/

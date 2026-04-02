@@ -51,7 +51,7 @@ class QuantLinear(nn.Module):
 
         self.in_features = org_module.in_features
         self.out_features = org_module.out_features
-        # de-activate the quantized forward default
+        # de-activate the quantized forward default  禁用量化前向传播的默认设置
         self.use_weight_quant = False
         self.use_act_quant = False
 

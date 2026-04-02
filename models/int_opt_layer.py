@@ -356,6 +356,18 @@ class QuantOPTDecoderLayer(nn.Module):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
                 (see `past_key_values`).
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
+
+            hidden_states (`torch.Int8Tensor`): 前一层层归一化 (LayerNorm) 的输出,数据类型为 INT8
+            attention_mask (`torch.FloatTensor`,*可选*)：注意力掩码，形状为
+                `(batch, 1, tgt_len, src_len)`，其中填充位置通过极大的负值进行标识。
+            layer_head_mask (`torch.FloatTensor`,*可选*)：指定层中注意力头的掩码，形状为
+                `(encoder_attention_heads,)`。
+            output_attentions (`bool`, *可选*):
+                是否返回所有注意力层的注意力张量。详见返回张量中的 `attentions` 字段说明。
+            use_cache (`bool`,*可选*):
+                若设为 `True`，将返回 `past_key_values` 键值状态，可用于加速解码
+                （参见 `past_key_values`）。
+            past_key_value (`Tuple(torch.FloatTensor)`,*可选*)：缓存的历史键与值投影状态。
         """
 
         # Self Attention
