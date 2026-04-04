@@ -814,7 +814,7 @@ def main():
         metrics = framework.evaluate(train_sets, eval_samples, one_train_set_per_eval_sample=True)
         logger.info(metrics)
         if args.local_rank <= 0:
-            write_metrics_to_file(metrics, "result/" + result_file_tag(args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)    
+            write_metrics_to_file(metrics, args.output_dir + result_file_tag(args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)    
 
     # evaluate(lm, args, logger)
 
