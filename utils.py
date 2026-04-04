@@ -161,7 +161,8 @@ def forward_wrap_with_option_len(self, input_ids=None, labels=None, option_len=N
         mask = shift_labels != -100 # Option part
         shift_labels[~mask] = 0 # So that it doesn't mess up with indexing
 
-        selected_log_probs = torch.gather(log_probs, dim=-1, index=shift_labels.unsqueeze(-1)).squeeze(-1) # (bsz x num_options, len)
+        selected_log_probs = torch.gather(log_probs.to(shift_labels.device), dim=-1, index=shift_labels.unsqueeze(-1)).squeeze(-1) # (bsz x num_options, len)
+        # selected_log_probs = torch.gather(log_probs, dim=-1, index=shift_labels.unsqueeze(-1)).squeeze(-1) # (bsz x num_options, len)
         selected_log_probs = (selected_log_probs * mask).sum(-1) / mask.sum(-1) # (bsz x num_options)
 
         if any([x != num_options[0] for x in num_options]):

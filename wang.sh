@@ -42,7 +42,7 @@ fi
 SAVE_DIR="./log0/$MODEL-w${WBITS}a${ABITS}/$METHOD-$GROUP_NUM-MAX_LENGTH-$MAX_LENGTH-$TASK-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
 
 # --- 执行训练 ---
-CUDA_VISIBLE_DEVICES=7 python -m debugpy --listen 6001 --wait-for-client train_main.py \
+CUDA_VISIBLE_DEVICES=0 python -m debugpy --listen 6001 --wait-for-client train_main.py \
   --model "facebook/$MODEL" \
   --epochs 0 \
   --q_output_dir "$SAVE_DIR" \

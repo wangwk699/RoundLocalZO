@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from models.int_qwen_layer import QuantQwenDecoderLayer
 from models.int_llama_layer import QuantLlamaDecoderLayer
 from models.int_opt_layer import QuantOPTDecoderLayer
 from models.int_falcon_layer import QuantFalconDecoderLayer
@@ -55,12 +56,25 @@ def omniquant(
     use_cache = model.config.use_cache
     model.config.use_cache = False
     is_llama = False
+    is_qwen = False
     if "llama" in args.net.lower():
         is_llama = True
         layers = model.model.layers  # (layers): ModuleList((0-23): 24 x OPTDecoderLayer(
         model.model.embed_tokens = model.model.embed_tokens.to(dev)
         model.model.norm = model.model.norm.to(dev)
         DecoderLayer = QuantLlamaDecoderLayer
+        pairs = {
+            "q_proj":"qkv",
+            "o_proj":"out",
+            "up_proj":"fc1"
+        }
+        layer_name_prefix = "model.layers"
+    elif "qwen" in args.net.lower():
+        is_qwen = True
+        layers = model.model.layers  # (layers): ModuleList((0-23): 24 x OPTDecoderLayer(
+        model.model.embed_tokens = model.model.embed_tokens.to(dev)
+        model.model.norm = model.model.norm.to(dev)
+        DecoderLayer = QuantQwenDecoderLayer
         pairs = {
             "q_proj":"qkv",
             "o_proj":"out",
@@ -117,6 +131,7 @@ def omniquant(
             super().__init__()
             self.module = module
             self.is_llama = False
+            self.is_qwen = False
 
         def forward(self, inp, **kwargs):
             inps[cache["i"]] = inp
@@ -124,10 +139,13 @@ def omniquant(
             cache["attention_mask"] = kwargs["attention_mask"]
             if self.is_llama:
                 cache["position_ids"] = kwargs["position_ids"]
+            if self.is_qwen:
+                cache["position_ids"] = kwargs["position_ids"]
             raise ValueError
 
     layers[0] = Catcher(layers[0])
     layers[0].is_llama = is_llama
+    layers[0].is_qwen = is_qwen
 
     with torch.no_grad():
         for batch in dataloader:
@@ -142,6 +160,9 @@ def omniquant(
     layers[0] = layers[0].module
     layers[0] = layers[0].cpu()
     if "llama" in args.net.lower() or "mixtral" in args.net.lower():
+        model.model.embed_tokens = model.model.embed_tokens.cpu()
+        model.model.norm = model.model.norm.cpu()
+    elif "qwen" in args.net.lower() or "mixtral" in args.net.lower():
         model.model.embed_tokens = model.model.embed_tokens.cpu()
         model.model.norm = model.model.norm.cpu()
     elif "opt" in args.net.lower():
@@ -177,13 +198,15 @@ def omniquant(
     loss_func = torch.nn.MSELoss()
     if is_llama:
         position_ids = cache["position_ids"]
+    elif is_qwen:
+        position_ids = cache["position_ids"]
     else:
         position_ids = None
 
 
 
     if args.resume:
-        omni_parameters = torch.load(args.resume)
+        omni_parameters = torch.load(args.resume)  # LWC 和 LET 参数
     else:
         omni_parameters = {}
 
@@ -223,6 +246,8 @@ def omniquant(
         use_shift = True 
         if is_llama or args.abits == 16:
             use_shift = False                   # deactivate channel-wise shifting for llama model and weight-only quantization
+        if is_qwen or args.abits == 16:
+            use_shift = False                   # deactivate channel-wise shifting for qwen model and weight-only quantization    
         if args.let:
             # init channel-wise scaling and shift
             qlayer.register_parameter("qkt_smooth_scale",torch.nn.Parameter(torch.ones(layer.self_attn.q_proj.out_features,device=dev, dtype=dtype)))
@@ -264,7 +289,7 @@ def omniquant(
                     index = j * args.batch_size
                     # obtain output of quantization model
                     with traincast():
-                        smooth_and_quant_temporary(qlayer, args, is_llama)
+                        smooth_and_quant_temporary(qlayer, args, is_llama)  # 禁用 let 的情况下，这里的 is_llama 和 is_qwen 效果相同，就不用再为 qwen 改了
                         quant_out = qlayer(quant_inps[index:index+args.batch_size,], attention_mask=attention_mask_batch,position_ids=position_ids)[0]
                         loss = loss_func(fp_inps[index:index+args.batch_size,], quant_out)
                         if args.aug_loss:

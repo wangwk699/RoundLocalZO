@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # --- 基础配置 ---
-METHODS=("STE")                        # 遍历不同的梯度估计方法 "STE" "HTGE" "Uniform" "Normal"
+METHODS=("Normal")                        # 遍历不同的梯度估计方法 "STE" "HTGE" "Uniform" "Normal"
 TASK=SST2                                     # SST2 RTE CB BoolQ WSC WIC MultiRC
-STEPS=5000
+STEPS=0
 IRS=("1e-4")      # 遍历不同的学习率
 USE_SUM=False
 MODEL=Llama-2-7b
@@ -11,6 +11,7 @@ BATCH_SIZE=8
 WBITS=4
 ABITS=16
 MAX_LENGTH=2048
+LWC_LR=1e-2
 
 if [ "$WBITS" -eq 3 ]; then
     RESUME="./pre_quantized_models/Llama-2-7b-w3a16g.pth"
@@ -57,16 +58,17 @@ for METHOD in "${METHODS[@]}"; do
         echo "------------------------------------------"
         
         # 构建完整路径（包含 IR 信息）
-        SAVE_DIR="./log4/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+        SAVE_DIR="./log6/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
         
-        # --- 执行训练 ---
-        CUDA_VISIBLE_DEVICES=1 python train_main.py \
+        # --- 执行训练 ---  -m debugpy --listen 6001 --wait-for-client 
+        CUDA_VISIBLE_DEVICES=1,2 python train_main.py \
             --model "meta-llama/$MODEL-hf" \
-            --epochs 0 \
+            --epochs 2 \
             --q_output_dir "$SAVE_DIR" \
             --wbits "$WBITS" \
             --abits "$ABITS" \
-            --lwc \
+            --lwc --let\
+            --lwc_lr "$LWC_LR" \
             --resume "$RESUME" \
             --train \
             --train_as_classification True \

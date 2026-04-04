@@ -60,6 +60,8 @@ net_choices = [
     "falcon-180b",
     "falcon-7b",
     "mixtral-8x7b"
+    "Qwen3-8B"
+    "Qwen2-7B"
 ]
 
 #chents_train
@@ -160,7 +162,7 @@ class OurArguments(TrainingArguments):
     abits: int = 16  # activation bits
     group_size: Optional[int] = None  # group size for quantization
     alpha: float = 0.5  # alpha parameter
-    let_lr: float = 5e-3  # learnable equivalent transformation learning rate
+    let_lr: float = 0  # learnable equivalent transformation learning rate
     lwc_lr: float = 1e-2  # learnable weight clipping learning rate
     wd: float = 0.0  # weight decay
     epochs: int = 10  # number of epochs
@@ -360,6 +362,12 @@ class Framework:
             for name, param in self.model.named_parameters():
                 if param.requires_grad:
                     pass
+            
+    
+            from accelerate import infer_auto_device_map, dispatch_model
+            block_class_name = self.model.model.layers[0].__class__.__name__
+            device_map = infer_auto_device_map(self.model, max_memory={i: "10GiB" for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
+            self.model = dispatch_model(self.model, device_map=device_map, skip_keys='past_key_values')
             trainer = RoundZOTrainer(
                 model=self.model, 
                 args=self.args,
@@ -449,7 +457,8 @@ class Framework:
             logits = logits[0, :-1] 
             log_probs = F.log_softmax(logits, dim=-1)
 
-            selected_log_probs = log_probs[torch.arange(len(labels)).to(labels.device), labels]
+            selected_log_probs = log_probs[torch.arange(len(labels)).to(log_probs.device), labels.to(log_probs.device)]
+            #selected_log_probs = log_probs[torch.arange(len(labels)).to(labels.device), labels]
             selected_log_probs = selected_log_probs.cpu().detach()
             # Only return the option (candidate) part
             return selected_log_probs[-option_len:]

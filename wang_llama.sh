@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # --- 基础配置 ---
-METHOD="Normal"              # STE HTGE Uniform Normal Laplace
-TASK="MultiRC" # 6 个任务
-STEPS=5000
+METHOD="STE"              # STE HTGE Uniform Normal Laplace
+TASK="SST2" # 6 个任务
+STEPS=100
 USE_SUM=False
 MODEL=Llama-2-7b
 BATCH_SIZE=1
@@ -60,10 +60,10 @@ else
 fi
 
 # 构建完整路径
-SAVE_DIR="./log3/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
+SAVE_DIR="./log6/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/MAX_LENGTH-$MAX_LENGTH-STEPS-$STEPS-IR-$IR$DIR_SUFFIX"
 
 # --- 执行训练 ---
-CUDA_VISIBLE_DEVICES=0 python train_main.py \
+CUDA_VISIBLE_DEVICES=0,1 python train_main.py \
     --model "meta-llama/$MODEL-hf" \
     --epochs 0 \
     --q_output_dir "$SAVE_DIR" \
