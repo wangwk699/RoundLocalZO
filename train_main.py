@@ -366,7 +366,7 @@ class Framework:
     
             from accelerate import infer_auto_device_map, dispatch_model
             block_class_name = self.model.model.layers[0].__class__.__name__
-            device_map = infer_auto_device_map(self.model, max_memory={i: "10GiB" for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
+            device_map = infer_auto_device_map(self.model, max_memory={i: "15GiB" for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
             self.model = dispatch_model(self.model, device_map=device_map, skip_keys='past_key_values')
             trainer = RoundZOTrainer(
                 model=self.model, 

@@ -21,6 +21,7 @@ log3/
 log4/
 log5/
 log6/
+log7/
 act_scales/
 act_shifts/
 pre_quantized_models/
@@ -32,3 +33,11 @@ Llama-2-7b-hf.zip
 model/
 wandb/demo.py
 demo.py
+wang.sh
+wang_opt.sh
+wang_opt1.sh
+wang_opt2.sh
+wang_llama.sh
+wang_llama1.sh
+wang_llama2.sh
+wang_llama3.sh
