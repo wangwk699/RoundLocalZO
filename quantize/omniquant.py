@@ -137,9 +137,7 @@ def omniquant(
             inps[cache["i"]] = inp
             cache["i"] += 1
             cache["attention_mask"] = kwargs["attention_mask"]
-            if self.is_llama:
-                cache["position_ids"] = kwargs["position_ids"]
-            if self.is_qwen:
+            if self.is_llama or self.is_qwen:
                 cache["position_ids"] = kwargs["position_ids"]
             raise ValueError
 

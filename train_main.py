@@ -139,10 +139,11 @@ class OurArguments(TrainingArguments):
     # Additional parameters from the script
     train_set_seed: int = 42  # SEED 设置为 train_set_seed (默认值 0)
     result_file: str = None  # 如果没有指定，默认为 None
-    logging_steps: int = 125  # 脚本中设置了 --logging_steps 10   logging_steps = 1000 // BATCH_SIZE
+    logging_steps: int = 250  # 脚本中设置了 --logging_steps 10   logging_steps = 1000 // BATCH_SIZE
     evaluation_strategy: str = "steps"  # 脚本中设置了 --evaluation_strategy steps
     save_strategy: str = "steps"  # 脚本中设置了 --save_strategy steps
     lr_scheduler_type: str = "constant"  # 脚本中设置了 --lr_scheduler_type linear
+    warmup_ratio: float = 0.03  
     output_dir = "./log/wic-2.7"  # 输出目录
 
     # 其他参数
@@ -366,7 +367,7 @@ class Framework:
     
             from accelerate import infer_auto_device_map, dispatch_model
             block_class_name = self.model.model.layers[0].__class__.__name__
-            device_map = infer_auto_device_map(self.model, max_memory={i: "15GiB" for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
+            device_map = infer_auto_device_map(self.model, max_memory={i: "13GiB" for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
             self.model = dispatch_model(self.model, device_map=device_map, skip_keys='past_key_values')
             trainer = RoundZOTrainer(
                 model=self.model, 
@@ -799,8 +800,12 @@ def main():
             if not args.no_eval:
                 logger.info("===== Train set %d =====" % train_set_seed)
                 logger.info(metrics)
+                # if args.local_rank <= 0:
+                #     write_metrics_to_file(metrics, "result/" + result_file_tag(args) + f"-trainset{train_set_id}.json" if args.result_file is None else args.result_file)
                 if args.local_rank <= 0:
-                    write_metrics_to_file(metrics, "result/" + result_file_tag(args) + f"-trainset{train_set_id}.json" if args.result_file is None else args.result_file)
+                    output_file = (args.output_dir + result_file_tag(args) + f"-trainset{train_set_id}.json") if args.result_file is None else args.result_file
+                    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+                    write_metrics_to_file(metrics, output_file)
 
     else:
         # For each eval sample, there is a training set. no training is allowed  对于每个评估样本，均对应一个训练集。不允许进行任何训练。
@@ -813,8 +818,14 @@ def main():
 
         metrics = framework.evaluate(train_sets, eval_samples, one_train_set_per_eval_sample=True)
         logger.info(metrics)
+        # if args.local_rank <= 0:
+        #     write_metrics_to_file(metrics, args.output_dir + result_file_tag(args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)    
+
         if args.local_rank <= 0:
-            write_metrics_to_file(metrics, args.output_dir + result_file_tag(args) + "-onetrainpereval.json" if args.result_file is None else args.result_file)    
+            output_file = (args.output_dir + result_file_tag(args) + "-onetrainpereval.json") if args.result_file is None else args.result_file
+            Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+            write_metrics_to_file(metrics, output_file)
+
 
     # evaluate(lm, args, logger)
 
