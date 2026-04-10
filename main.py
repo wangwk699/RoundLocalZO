@@ -10,7 +10,7 @@ from lm_eval import evaluator
 from pprint import pprint
 from parallel_utils import map_layers_to_multi_gpus, get_lowest_occupied_gpu
 import torch.nn as nn
-from RoundLocalZO2.quantize.omniquant_old import omniquant
+from quantize.omniquant import omniquant
 from tqdm import tqdm
 import utils
 from pathlib import Path

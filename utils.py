@@ -135,6 +135,8 @@ def forward_wrap_with_option_len(self, input_ids=None, labels=None, option_len=N
     """
     if return_dict is None:
         return_dict = getattr(self.config, "use_return_dict", True)
+
+    kwargs.pop("num_items_in_batch", None)   # ⭐关键修复
     outputs = self.original_forward(input_ids=input_ids, **kwargs)
     if isinstance(outputs, tuple):
         outputs = outputs[0]
