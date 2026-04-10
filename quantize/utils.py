@@ -89,7 +89,8 @@ def smooth_and_quant_temporary(model, args, isllama):
         for name, module in model.named_modules():
             if isinstance(module, QuantLinear):
                 module.temp_weight = module.weight
-    # quant
+
+    # quant # ← 量化阶段（无论 args.let 为何值都会执行）
     for name, module in model.named_modules():
         if isinstance(module, QuantLinear):
             if hasattr(module, "temp_weight"):
