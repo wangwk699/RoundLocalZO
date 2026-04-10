@@ -24,84 +24,6 @@ import pdb
 
 
 torch.backends.cudnn.benchmark = True
-# models/lm_eval_adapter.py
-import torch
-from lm_eval.api.model import LM as HarnessLM
-
-class OmniQuantHarnessAdapter(HarnessLM):
-    """
-    把你现有的 LMClass 适配到 lm-eval-harness 的 LM 接口。
-    harness 会传 Instance 列表进来，我们从 Instance.args 取出参数，
-    再转成你现有实现能吃的 tuple 列表。
-    """
-    def __init__(self, inner_lm):
-        super().__init__()
-        self.inner = inner_lm
-
-    @property
-    def device(self):
-        return self.inner.device
-
-    @property
-    def eot_token_id(self):
-        return self.inner.eot_token_id
-
-    @property
-    def max_length(self):
-        return self.inner.max_length
-
-    # -------- harness required methods --------
-    def loglikelihood(self, requests):
-        # requests: list[Instance], Instance.args == (context, continuation)
-        reqs = [inst.args for inst in requests]
-        return self.inner.loglikelihood(reqs)
-
-    def loglikelihood_rolling(self, requests):
-        # Instance.args == (string,)
-        reqs = [inst.args for inst in requests]
-        return self.inner.loglikelihood_rolling(reqs)
-
-    def generate_until(self, requests):
-        # Instance.args == (prompt, gen_kwargs_dict)
-        res = []
-        for inst in requests:
-            prompt, gen_kwargs = inst.args
-
-            until = gen_kwargs.get("until", [])
-            if isinstance(until, str):
-                until = [until]
-
-            max_gen_toks = gen_kwargs.get("max_gen_toks", self.inner.max_gen_toks)
-
-            # 你原本是 greedy decoding，这里保持一致（do_sample=False）
-            do_sample = bool(gen_kwargs.get("do_sample", False))
-            temperature = float(gen_kwargs.get("temperature", 0.0))
-            top_p = float(gen_kwargs.get("top_p", 1.0))
-            top_k = gen_kwargs.get("top_k", None)
-            if top_k is not None:
-                top_k = int(top_k)
-
-            input_ids = torch.tensor([self.inner.tok_encode(prompt)], device=self.inner.device)
-
-            out = self.inner.model.generate(
-                input_ids=input_ids,
-                max_new_tokens=max_gen_toks,
-                do_sample=do_sample,
-                temperature=temperature,
-                top_p=top_p,
-                top_k=top_k,
-                eos_token_id=self.inner.tokenizer.eos_token_id,
-            )
-
-            gen_tokens = out[0][input_ids.shape[1]:]
-            text = self.inner.tokenizer.decode(gen_tokens, skip_special_tokens=True)
-
-            # 按 until 截断（harness 的 stopping sequences）
-            for term in until:
-                text = text.split(term)[0]
-
-            res.append(text)
-        return res
 
 net_choices = [
     "opt-125m",
@@ -163,18 +85,16 @@ def evaluate(lm, args, logger):
     else:
         if "opt" in args.net.lower():
             lm.model.model.decoder = lm.model.model.decoder.to(lm.device)
-        elif "llama" in args.net.lower() or "mixtral" in args.net.lower():
+        elif "llama" in args.net.lower() or "qwen" in args.net.lower():
             lm.model = lm.model.to(lm.device)
         elif "falcon" in args.net.lower():
             lm.model.transformer = lm.model.transformer.to(lm.device)
 
-
-    if False:
-        # for dataset in ["wikitext2", "ptb", "c4","ptb-new",'c4-new']:
-        for dataset in ["wikitext2", "c4"]:
+    if args.eval_ppl:
+        for dataset in ["wikitext2", "c4_new"]:
             cache_testloader = f'{args.cache_dir}/testloader_{args.model_family}_{dataset}_all.cache'
             if os.path.exists(cache_testloader):
-                testloader = torch.load(cache_testloader)
+                testloader = torch.load(cache_testloader, weights_only=False)
                 logger.info(f"load calibration from {cache_testloader}")
             else:
                 dataloader, testloader = get_loaders(
@@ -198,16 +118,14 @@ def evaluate(lm, args, logger):
                 batch = testenc[:, (i * lm.seqlen) : ((i + 1) * lm.seqlen)].to(lm.device)
                 if "opt" in args.net.lower():
                     outputs = lm.model.model.decoder(batch)
-                elif "llama" in args.net.lower() or "mixtral" in args.net.lower():
+                elif "llama" in args.net.lower() or "qwen" in args.net.lower():
                     outputs = lm.model.model(batch)
                 elif "falcon" in args.model:
                     outputs = lm.model.transformer(batch)
                 hidden_states = outputs[0]
                 logits = lm.model.lm_head(hidden_states)
                 shift_logits = logits[:, :-1, :]
-                shift_labels = testenc[:, (i * lm.seqlen) : ((i + 1) * lm.seqlen)][
-                    :, 1:
-                ].to(lm.model.lm_head.weight.device)
+                shift_labels = testenc[:, (i * lm.seqlen) : ((i + 1) * lm.seqlen)][:, 1:].to(lm.model.lm_head.weight.device)
                 loss_fct = nn.CrossEntropyLoss()
                 loss = loss_fct(
                     shift_logits.view(-1, shift_logits.size(-1)),
@@ -222,33 +140,16 @@ def evaluate(lm, args, logger):
             logger.info(f'{dataset} : {ppl.item()}')
             lm.model.config.use_cache = use_cache
             results[dataset] = ppl.item()
-    if args.tasks != "":
-        eval_lm = OmniQuantHarnessAdapter(lm)
+    if args.tasks != "":   # 零样本任务评估, 评估模型在下游任务上的泛化能力
         t_results = evaluator.simple_evaluate(
+            lm,
             tasks=args.tasks,
-            model=eval_lm,
             num_fewshot=args.num_fewshot,
             limit=None if args.limit == -1 else args.limit,
         )
         results.update(t_results)
         logger.info(results)
-        task_metrics = t_results.get("results", {})  # 每个task的汇总指标在这里
-        for task_name, m in task_metrics.items():
-            # 常见分类任务会有 acc / acc_norm
-            if "acc" in m:
-                logger.info(f"[{task_name}] acc={m['acc']:.4f}")
-                print(f"[{task_name}] acc={m['acc']:.4f}")
-            elif "exact_match" in m:
-                logger.info(f"[{task_name}] exact_match={m['exact_match']:.4f}")
-                print(f"[{task_name}] exact_match={m['exact_match']:.4f}")
-            else:
-                # 兜底：只打印这个 task 的所有 scalar 指标
-                scalars = {k: v for k, v in m.items() if isinstance(v, (int, float))}
-                logger.info(f"[{task_name}] {scalars}")
-                print(f"[{task_name}] {scalars}")
-
-        # 如果你只关心 overall（有些版本会提供）
-        overall = t_results.get("results", {})
+        pprint(results)
         # for test of MMLU
         if 'hendrycksTest' in args.tasks:
             all_cors = []
@@ -282,7 +183,7 @@ def evaluate(lm, args, logger):
 
 def main():
     import argparse
-
+    start_time = time.time()  # 记录开始时间    
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, help="model name of model path")
     parser.add_argument("--cache_dir", default="./cache", type=str, help="cache dir of dataset, leading to faster debug")
@@ -303,7 +204,7 @@ def main():
     parser.add_argument("--wbits", type=int, default=4)
     parser.add_argument("--abits", type=int, default=16)
     parser.add_argument("--group_size", type=int, default=None)
-    parser.add_argument("--alpha", type=float, default=0.5)
+    parser.add_argument("--alpha", type=float, default=0.5)   # 控制 activation → weight 的“迁移强度”
     parser.add_argument("--let_lr", type=float, default=5e-3)
     parser.add_argument("--lwc_lr", type=float, default=1e-2)
     parser.add_argument("--wd", type=float, default=0)
@@ -435,11 +336,8 @@ def main():
         act_scales = None
         act_shifts = None
         if args.let:
-            #act_scales = torch.load(args.act_scales)
-            #act_shifts = torch.load(args.act_shifts)
-            print("load act scales and shifts from ", args.act_scales, args.act_shifts)
-            act_scales = torch.load(args.act_scales,weights_only=False)
-            act_shifts = torch.load(args.act_shifts,weights_only=False)
+            act_scales = torch.load(args.act_scales)
+            act_shifts = torch.load(args.act_shifts)
         omniquant(
             lm,
             args,
@@ -466,6 +364,17 @@ def main():
         lm.model.save_pretrained(args.save_dir)  
         lm.tokenizer.save_pretrained(args.save_dir) 
     evaluate(lm, args,logger)
+    
+    # 【新增】记录执行时间并输出到日志
+    end_time = time.time()
+    execution_time = end_time - start_time
+    hours = int(execution_time // 3600)
+    minutes = int((execution_time % 3600) // 60)
+    seconds = execution_time % 60
+    logger.info(f"\n===== Execution Time =====")
+    logger.info(f"Total: {execution_time:.2f} seconds")
+    logger.info(f"Format: {hours}h {minutes}m {seconds:.2f}s")
+    logger.info(f"==========================")
 
 
 if __name__ == "__main__":
