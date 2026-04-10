@@ -156,7 +156,7 @@ class QuantQwenAttention(nn.Module):
                     f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
                 )
             attn_weights = attn_weights + attention_mask
-            attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))
+            attn_weights = torch.max(attn_weights, torch.tensor(torch.finfo(attn_weights.dtype).min))  # 防止下溢,出现 -inf,导致softmax 会输出 NaN
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
@@ -170,7 +170,7 @@ class QuantQwenAttention(nn.Module):
                 f" {attn_output.size()}"
             )
 
-        attn_output = attn_output.transpose(1, 2)
+        attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         attn_output = self.o_proj(attn_output)

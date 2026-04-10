@@ -59,7 +59,7 @@ def omniquant(
     is_qwen = False
     if "llama" in args.net.lower():
         is_llama = True
-        layers = model.model.layers  # (layers): ModuleList((0-23): 24 x OPTDecoderLayer(
+        layers = model.model.layers  
         model.model.embed_tokens = model.model.embed_tokens.to(dev)
         model.model.norm = model.model.norm.to(dev)
         DecoderLayer = QuantLlamaDecoderLayer
@@ -71,7 +71,7 @@ def omniquant(
         layer_name_prefix = "model.layers"
     elif "qwen" in args.net.lower():
         is_qwen = True
-        layers = model.model.layers  # (layers): ModuleList((0-23): 24 x OPTDecoderLayer(
+        layers = model.model.layers  
         model.model.embed_tokens = model.model.embed_tokens.to(dev)
         model.model.norm = model.model.norm.to(dev)
         DecoderLayer = QuantQwenDecoderLayer
