@@ -10,7 +10,7 @@ from lm_eval import evaluator
 from pprint import pprint
 from parallel_utils import map_layers_to_multi_gpus, get_lowest_occupied_gpu
 import torch.nn as nn
-from quantize.omniquant_old import omniquant
+from quantize.omniquant import omniquant
 from tqdm import tqdm
 import utils
 from pathlib import Path
@@ -364,11 +364,16 @@ class Framework:
                 if param.requires_grad:
                     pass
             
-    
-            from accelerate import infer_auto_device_map, dispatch_model
-            block_class_name = self.model.model.layers[0].__class__.__name__
-            device_map = infer_auto_device_map(self.model, max_memory={i: "13GiB" for i in range(torch.cuda.device_count())}, no_split_module_classes=[block_class_name])
-            self.model = dispatch_model(self.model, device_map=device_map, skip_keys='past_key_values')
+            if torch.cuda.device_count() > 1:
+                from accelerate import infer_auto_device_map, dispatch_model
+                block_class_name = self.model.model.layers[0].__class__.__name__
+                device_map = infer_auto_device_map(
+                    self.model, 
+                    max_memory={i: "13GiB" for i in range(torch.cuda.device_count())}, 
+                    no_split_module_classes=[block_class_name]
+                )
+                self.model = dispatch_model(self.model, device_map=device_map, skip_keys="past_key_values")
+                
             trainer = RoundZOTrainer(
                 model=self.model, 
                 args=self.args,
