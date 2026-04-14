@@ -165,6 +165,7 @@ class QuantLlama3DecoderLayer(nn.Module):
             use_cache: Optional[bool] = False,
             cache_position: Optional[torch.LongTensor] = None,
             position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+            **kwargs
     ) -> torch.Tensor:
         residual = hidden_states
 

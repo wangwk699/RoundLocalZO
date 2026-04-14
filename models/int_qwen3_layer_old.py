@@ -176,8 +176,7 @@ class QuantQwen3DecoderLayer(nn.Module):
         past_key_values: Optional[Cache] = None,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
-        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,
-        **kwargs
+        position_embeddings: Optional[tuple[torch.Tensor, torch.Tensor]] = None,  
     ) -> torch.Tensor:
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
