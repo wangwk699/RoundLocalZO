@@ -1403,9 +1403,10 @@ class QZOTrainer(Trainer):
                         tr_loss = tr_loss + tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
                     else:
                         if tr_loss.device != tr_loss_step.device:
-                            raise ValueError(
-                                f"Calculated loss must be on the original device: {tr_loss.device} but device in use is {tr_loss_step.device}"
-                            )
+                            tr_loss_step = tr_loss_step.to(tr_loss.device)
+                            # raise ValueError(
+                            #     f"Calculated loss must be on the original device: {tr_loss.device} but device in use is {tr_loss_step.device}"
+                            # )
                         tr_loss = tr_loss + tr_loss_step
 
                     self.current_flos += float(self.floating_point_ops(inputs))
@@ -1628,9 +1629,15 @@ class QZOTrainer(Trainer):
             inputs = self._prepare_inputs(inputs)
             args = self.args
             outputs = self.model.generate(
-                inputs["input_ids"], do_sample=args.sampling, temperature=args.temperature, 
-                num_beams=args.num_beams, top_p=args.top_p, top_k=args.top_k, max_new_tokens=min(args.max_new_tokens, args.max_length - inputs["input_ids"].size(1)), 
-                num_return_sequences=1, eos_token_id=[self.tokenizer.encode(args.eos_token, add_special_tokens=False)[-1], self.tokenizer.eos_token_id],
+                inputs["input_ids"], 
+                do_sample=args.sampling, 
+                temperature=args.temperature, 
+                num_beams=args.num_beams, 
+                top_p=args.top_p, 
+                top_k=args.top_k, 
+                max_new_tokens=min(args.max_new_tokens, args.max_length - inputs["input_ids"].size(1)), 
+                num_return_sequences=1, 
+                eos_token_id=[self.tokenizer.encode(args.eos_token, add_special_tokens=False)[-1], self.tokenizer.eos_token_id],
             )
             output_text = []
             for i in range(len(outputs)):
