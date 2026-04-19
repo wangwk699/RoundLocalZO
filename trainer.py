@@ -50,8 +50,6 @@ from torch.utils.data import DataLoader
 from transformers import Trainer, TrainingArguments
 from transformers.trainer_utils import PredictionOutput, EvalLoopOutput
 
-# Integrations must be imported before ML frameworks:
-# isort: off
 from transformers.integrations import (
     get_reporting_integration_callbacks,
     hp_params,
