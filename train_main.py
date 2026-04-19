@@ -30,7 +30,7 @@ from tasks import get_task
 from dataclasses import dataclass
 from transformers import HfArgumentParser, TrainingArguments, DataCollatorForTokenClassification
 from utils import *
-from trainer import ZOTrainer, QZOTrainer, QAZOTrainer, RoundZOTrainer
+from trainer import RoundZOTrainer
 from torch.utils.data import Dataset
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 from metrics import calculate_metric
@@ -197,6 +197,9 @@ class OurArguments(TrainingArguments):
     t: float = 0.5
     use_sum: bool = False
     train_batch_size: int = 4
+
+    # 生成式任务惩罚参数
+    repetition_penalty : float = 1
     
 
 # ldx:add:
@@ -237,7 +240,8 @@ class Framework:
     def __init__(self, args, task, model,tokenizer):
         self.args = args
         self.task = task
-        self.model, self.tokenizer = model,tokenizer
+        self.model = model
+        self.tokenizer = tokenizer
     def train(self, train_samples, eval_samples):
         """
         Training function
@@ -448,9 +452,16 @@ class Framework:
             args = self.args
             # Autoregressive generation
             outputs = self.model.generate(
-                input_ids, do_sample=args.sampling, temperature=args.temperature, 
-                num_beams=args.num_beams, top_p=args.top_p, top_k=args.top_k, max_new_tokens=min(args.max_new_tokens, args.max_length - input_ids.size(1)), 
-                num_return_sequences=1, eos_token_id=[self.tokenizer.encode(args.eos_token, add_special_tokens=False)[-1], self.tokenizer.eos_token_id],
+                input_ids, 
+                do_sample=args.sampling, 
+                temperature=args.temperature, 
+                num_beams=args.num_beams, 
+                top_p=args.top_p, 
+                top_k=args.top_k, 
+                repetition_penalty=args.repetition_penalty,
+                max_new_tokens=min(args.max_new_tokens, args.max_length - input_ids.size(1)), 
+                num_return_sequences=1, 
+                eos_token_id=[self.tokenizer.encode(args.eos_token, add_special_tokens=False)[-1], self.tokenizer.eos_token_id],
             )
             # For generation, directly return the text output
             output_text = self.tokenizer.decode(outputs[0][input_ids.size(1):], skip_special_tokens=True).strip()
@@ -808,7 +819,8 @@ def main():
                 # if args.local_rank <= 0:
                 #     write_metrics_to_file(metrics, "result/" + result_file_tag(args) + f"-trainset{train_set_id}.json" if args.result_file is None else args.result_file)
                 if args.local_rank <= 0:
-                    output_file = (args.output_dir + result_file_tag(args) + f"-trainset{train_set_id}.json") if args.result_file is None else args.result_file
+                    # output_file = (args.output_dir + result_file_tag(args) + f"-trainset{train_set_id}.json") if args.result_file is None else args.result_file
+                    output_file = (args.output_dir + f"-trainset{train_set_id}.json") if args.result_file is None else args.result_file
                     Path(output_file).parent.mkdir(parents=True, exist_ok=True)
                     write_metrics_to_file(metrics, output_file)
 
