@@ -1,0 +1,443 @@
+====================opt-6.7b====================
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--epochs 0 \
+--wbits 16 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.19
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--epochs 0 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.0
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--lwc \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.14
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--lwc \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 1000 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.499
+
+====================opt-13b====================
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-13b \
+--epochs 0 \
+--wbits 16 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.58
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-13b \
+--epochs 0 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.46
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-13b \
+--epochs 0 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--lwc \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.44
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-13b \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--lwc \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.31
+
+CUDA_VISIBLE_DEVICES=4 python train_main_v2.py \
+--model facebook/opt-13b \
+--epochs 20 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/test_qopt \
+--let \
+--lwc \
+--task_name SQuAD \
+--trainer none \
+--max_steps 0 \
+--num_eval 5 \
+--num_train 5 \
+--num_dev 0 \
+--max_new_tokens 50 \
+
+f1: 0.0
+
+=============================================
+====================train====================
+=============================================
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--num_eval 10 \
+--num_train 100 \
+--num_dev 10 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 1000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.376
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-13b \
+--num_eval 10 \
+--num_train 100 \
+--num_dev 10 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 1000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.484
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--num_eval 20 \
+--num_train 200 \
+--num_dev 20 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.464
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-13b \
+--num_eval 20 \
+--num_train 200 \
+--num_dev 20 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.684
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--num_eval 100 \
+--num_train 400 \
+--num_dev 100 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.555
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-13b \
+--num_eval 100 \
+--num_train 400 \
+--num_dev 100 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.656
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--num_eval 500 \
+--num_train 1000 \
+--num_dev 100 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.482
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-6.7b \
+--num_eval 1000 \
+--num_train 1000 \
+--num_dev 100 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.501
+
+CUDA_VISIBLE_DEVICES=1 python train_main_v2.py \
+--model facebook/opt-13b \
+--num_eval 1000 \
+--num_train 1000 \
+--num_dev 100 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtopt \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.539
+
+
+
+
+====================Llama-2-7b====================
+CUDA_VISIBLE_DEVICES=2 python train_main_v2.py \
+--model meta-llama/Llama-2-7b-hf \
+--num_eval 5 \
+--num_train 10 \
+--num_dev 5 \
+--epochs 0 \
+--wbits 16 \
+--abits 16 \
+--q_output_dir ./log/qllama \
+--lwc False \
+--let \
+--task_name SQuAD \
+--train False \
+--trainer none \
+--max_steps 0 \
+
+f1: 0.704
+
+CUDA_VISIBLE_DEVICES=2 python train_main_v2.py \
+--model meta-llama/Llama-2-7b-hf \
+--num_eval 5 \
+--num_train 10 \
+--num_dev 5 \
+--epochs 0 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qllama \
+--lwc False \
+--let \
+--task_name SQuAD \
+--train False \
+--trainer none \
+--max_steps 0 \
+
+f1: 0.664
+
+CUDA_VISIBLE_DEVICES=2 python train_main_v2.py \
+--model meta-llama/Llama-2-7b-hf \
+--num_eval 5 \
+--num_train 10 \
+--num_dev 5 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qllama \
+--lwc \
+--let \
+--task_name SQuAD \
+--train False \
+--trainer none \
+--max_steps 0 \
+
+f1: 0.631
+
+CUDA_VISIBLE_DEVICES=2 python train_main_v2.py \
+--model meta-llama/Llama-2-7b-hf \
+--num_eval 1000 \
+--num_train 1000 \
+--num_dev 100 \
+--epochs 0 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtllama \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.762
+
+CUDA_VISIBLE_DEVICES=2 python train_main_v2.py \
+--model meta-llama/Llama-2-7b-hf \
+--num_eval 1000 \
+--num_train 1000 \
+--num_dev 100 \
+--epochs 10 \
+--wbits 4 \
+--abits 16 \
+--q_output_dir ./log/qtllama \
+--lwc \
+--let \
+--task_name SQuAD \
+--train True \
+--trainer qzo \
+--max_steps 5000 \
+--non_diff True \
+--train_as_classification False \
+
+f1: 0.811
