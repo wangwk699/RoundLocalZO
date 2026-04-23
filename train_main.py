@@ -581,7 +581,7 @@ class Framework:
         predictions = []  
         for eval_id, eval_sample in enumerate(tqdm(eval_samples)):
             predictions.append(
-                self.one_step_pred(train_samples[eval_id] if one_train_set_per_eval_sample else train_samples, eval_sample, verbose=(eval_id < 3))
+                self.one_step_pred(train_samples[eval_id] if one_train_set_per_eval_sample else train_samples, eval_sample, verbose=(eval_id < 10))
             )
 
         # Calculate metrics 
