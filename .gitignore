@@ -15,12 +15,3 @@ act_scales/
 act_shifts/
 pre_quantized_models/
 result/
-wang.sh
-wang_opt.sh
-wang_opt1.sh
-wang_opt2.sh
-wang_llama.sh
-wang_llama1.sh
-wang_llama2.sh
-wang_llama3.sh
-wang_qwen.sh
