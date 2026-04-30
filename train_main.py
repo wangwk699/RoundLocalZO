@@ -39,31 +39,6 @@ from types import SimpleNamespace
 torch.backends.cudnn.benchmark = True
 
 
-net_choices = [
-    "opt-125m",
-    "opt-1.3b",
-    "opt-2.7b",
-    "opt-6.7b",
-    "opt-13b",
-    "opt-30b",
-    "opt-66b",
-    "llama-7b",
-    "llama-13b",
-    "llama-30b",
-    "llama-65b",
-    "Llama-2-7b",
-    "Llama-2-13b",
-    "Llama-2-70b",
-    "Llama-2-7b-chat",
-    "Llama-2-13b-chat",
-    "llava-llama-2-13b-chat-lightning-preview",
-    "falcon-180b",
-    "falcon-7b",
-    "mixtral-8x7b"
-    "Qwen3-8B"
-    "Qwen2-7B"
-]
-
 #chents_train
 @dataclass
 class OurArguments(TrainingArguments):
@@ -246,6 +221,10 @@ class Framework:
         """
         Training function
         """
+        if self.args.max_steps <= 0:
+            logger.info("Skip downstream task fine-tuning because max_steps <= 0")
+            return
+
         # Set tokenizer to left padding (so that all the options are right aligned)
         self.tokenizer.padding_side = "left"
 
@@ -313,47 +292,7 @@ class Framework:
         else:
             collator = DataCollatorForTokenClassification
 
-        if self.args.trainer == 'zo': # MeZO
-            trainer = ZOTrainer(
-                model=self.model, 
-                args=self.args,
-                train_dataset=train_dataset, 
-                eval_dataset=eval_dataset,
-                tokenizer=self.tokenizer,
-                data_collator=DataCollatorWithPaddingAndNesting(self.tokenizer, pad_to_multiple_of=8) if self.args.train_as_classification else collator(self.tokenizer, pad_to_multiple_of=8)
-            )
-        elif self.args.trainer == 'regular': # Fine-tune (this is not used in our experiments)
-            from transformers import Trainer
-            trainer = Trainer(
-                model=self.model, 
-                args=self.args,
-                train_dataset=train_dataset, 
-                eval_dataset=eval_dataset,
-                tokenizer=self.tokenizer,
-                data_collator=DataCollatorWithPaddingAndNesting(self.tokenizer, pad_to_multiple_of=8) if self.args.train_as_classification else collator(self.tokenizer, pad_to_multiple_of=8)
-            )
-        # QZO Added: set QZOTrainer
-        elif self.args.trainer == 'qzo' and self.args.quant_method != '': 
-            assert self.args.quant_method in ['gptq', 'omni','aqlm'] # supported methods
-            trainer = QZOTrainer(
-                model=self.model, 
-                args=self.args,
-                train_dataset=train_dataset, 
-                eval_dataset=eval_dataset,
-                tokenizer=self.tokenizer,
-                data_collator=DataCollatorWithPaddingAndNesting(self.tokenizer, pad_to_multiple_of=8) if self.args.train_as_classification else collator(self.tokenizer, pad_to_multiple_of=8)
-            )
-        elif self.args.trainer == 'qazo' and self.args.quant_method != '': 
-            assert self.args.quant_method in ['gptq', 'omni','aqlm'] # supported methods
-            trainer = QAZOTrainer(
-                model=self.model, 
-                args=self.args,
-                train_dataset=train_dataset, 
-                eval_dataset=eval_dataset,
-                tokenizer=self.tokenizer,
-                data_collator=DataCollatorWithPaddingAndNesting(self.tokenizer, pad_to_multiple_of=8) if self.args.train_as_classification else collator(self.tokenizer, pad_to_multiple_of=8)
-            )
-        elif (self.args.trainer == 'STE' or self.args.trainer == 'HTGE' or self.args.trainer == 'Uniform' or self.args.trainer == 'Normal' or self.args.trainer == 'Laplace') and self.args.quant_method != '':
+        if (self.args.trainer == 'STE' or self.args.trainer == 'HTGE' or self.args.trainer == 'Uniform' or self.args.trainer == 'Normal' or self.args.trainer == 'Laplace') and self.args.quant_method != '':
             assert self.args.quant_method in ['gptq', 'omni','aqlm']            
             from transformers import Trainer
             for name, param in self.model.named_parameters():
@@ -608,7 +547,6 @@ def main():
     # load model
     if args.net is None:
         args.net = args.model.split('/')[-1]
-    # assert args.net in net_choices
     args.model_family = args.net.split('-')[0]
 
     # 1. 加载原始模型
@@ -776,6 +714,9 @@ def main():
                 m.set_quant_state(weight_quant=wq)
     enable_quant(lm.model, wq=True)  
     # lm.model = 
+    if not args.train:
+        lm.model = lm.model.to(lm.device)
+        lm.model.eval()
     framework = Framework(args, task, lm.model, lm.tokenizer)
     if args.train_set_seed is not None or args.num_train_sets is not None:
         # Eval samples share one (or multiple) training set(s)
