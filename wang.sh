@@ -2,7 +2,7 @@
 
 # --- 基础配置 ---
 METHOD="qzo"              # STE HTGE Uniform Normal
-TASK="SQuAD"                  # 6 个任务  SST2 RTE CB BoolQ WSC WIC MultiRC SQuAD
+TASK="SQuAD"              # 6 个任务  SST2 RTE CB BoolQ WSC WIC MultiRC SQuAD
 STEPS=10
 IR=5e-6
 IR_scheduler="constant_with_warmup"  # "constant_with_warmup"  "constant"
