@@ -379,15 +379,29 @@ class Framework:
                     pass
             
             if torch.cuda.device_count() > 1:
+                # from accelerate import infer_auto_device_map, dispatch_model
+                # block_class_name = self.model.model.layers[0].__class__.__name__
+                # device_map = infer_auto_device_map(
+                #     self.model, 
+                #     max_memory={i: "13GiB" for i in range(torch.cuda.device_count())}, 
+                #     no_split_module_classes=[block_class_name]
+                # )
+                # self.model = dispatch_model(self.model, device_map=device_map, skip_keys="past_key_values")
+
                 from accelerate import infer_auto_device_map, dispatch_model
-                block_class_name = self.model.model.layers[0].__class__.__name__
+                # block_class_name = self.model.model.layers[0].__class__.__name__
+                if hasattr(self.model.model, "layers"):  # e.g. LLaMA style
+                    block_class_name = self.model.model.layers[0].__class__.__name__
+                elif hasattr(self.model.model, "decoder") and hasattr(self.model.model.decoder, "layers"):  # OPT style
+                    block_class_name = self.model.model.decoder.layers[0].__class__.__name__
+                else:
+                    raise ValueError(f"Unsupported model structure: {type(self.model.model)}")
                 device_map = infer_auto_device_map(
                     self.model, 
                     max_memory={i: "13GiB" for i in range(torch.cuda.device_count())}, 
-                    no_split_module_classes=[block_class_name]
-                )
-                self.model = dispatch_model(self.model, device_map=device_map, skip_keys="past_key_values")
-                
+                    no_split_module_classes=[block_class_name])
+                self.model = dispatch_model(self.model, device_map=device_map, skip_keys='past_key_values')
+
             trainer = RoundZOTrainer(
                 model=self.model, 
                 args=self.args,
@@ -784,6 +798,9 @@ def main():
                 m.set_quant_state(weight_quant=wq)
     enable_quant(lm.model, wq=True)  
     # lm.model = 
+    if not args.train:
+        lm.model = lm.model.to(lm.device)
+        lm.model.eval()
     framework = Framework(args, task, lm.model, lm.tokenizer)
     if args.train_set_seed is not None or args.num_train_sets is not None:
         # Eval samples share one (or multiple) training set(s)

@@ -9,9 +9,6 @@ import math
 
 CLIPMIN = 1e-5
 
-
-
-
 def round_ste(x: torch.Tensor):
     """
     Implement Straight-Through Estimator for rounding operation.
@@ -272,6 +269,67 @@ class UniformAffineQuantizer(nn.Module):
         del self.scale
         del self.round_zero_point
 
+class RoundSTE(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        return round_ste(x)
+    
+    def extra_repr(self):
+        return "round_ste"
+
+class UniformModule(nn.Module):
+    def __init__(self, delta, use_sum):
+        super().__init__()
+        self.delta = delta
+        self.use_sum = use_sum
+        
+    def forward(self, x):
+        return Uniform.apply(x, self.delta, self.use_sum)
+    
+    def extra_repr(self):
+        return f"Uniform(delta={self.delta} use_sum={self.use_sum})"
+    
+
+class NormalModule(nn.Module):
+    def __init__(self, delta, use_sum):
+        super().__init__()
+        self.delta = delta
+        self.use_sum = use_sum
+        
+    def forward(self, x):
+        return Normal.apply(x, self.delta, self.use_sum)
+    
+    def extra_repr(self):
+        return f"Normal(delta={self.delta} use_sum={self.use_sum})"
+    
+
+class LaplaceModule(nn.Module):
+    def __init__(self, delta, use_sum):
+        super().__init__()
+        self.delta = delta
+        self.use_sum = use_sum
+        
+    def forward(self, x):
+        return Laplace.apply(x, self.delta, self.use_sum)
+    
+    def extra_repr(self):
+        return f"Laplace(delta={self.delta} use_sum={self.use_sum})"
+    
+
+class HTGEModule(nn.Module):
+    def __init__(self, t):
+        super().__init__()
+        self.t = t
+        
+    def forward(self, x):
+        return HTGE.apply(x, self.t)
+    
+    def extra_repr(self):
+        return f"HTGE(delta={self.t})"
+    
+
 # 向量化加速版本
 class Uniform(torch.autograd.Function):
     @staticmethod
@@ -284,43 +342,6 @@ class Uniform(torch.autograd.Function):
     
     @staticmethod
     def backward(ctx, grad_output):
-        # (x,) = ctx.saved_tensors
-        # delta = ctx.delta
-        # _lambda = ctx._lambda
-        # sample_size = ctx.sample_size
-        # # print(f"使用了我们的梯度反传")
-        
-        # original_shape = x.shape
-        # x_flat = x.view(-1)
-        # num_elements = x_flat.numel()
-        # u = x_flat
-        # k = torch.round(u - 0.5)
-        # b = k + 0.5
-        # v = u - b
-        # z_samples_uniform = (2 * _lambda) * torch.rand(num_elements, sample_size, device=x.device) - _lambda
-        # mask_invalid = torch.abs(z_samples_uniform) >= (1/(2*delta))
-        # total_invalid = mask_invalid.sum().item()
-        # while total_invalid > 0:
-        #     new_samples = (2 * _lambda) * torch.rand(num_elements, sample_size, device=x.device) - _lambda
-        #     new_mask_invalid = torch.abs(new_samples) >= (1/(2*delta))
-        #     replace_mask = mask_invalid & (~new_mask_invalid)
-        #     # z_samples_uniform = torch.where(replace_mask.unsqueeze(1).expand_as(z_samples_uniform) if z_samples_uniform.dim() > 1 else replace_mask, 
-        #     #                               new_samples, z_samples_uniform)
-        #     z_samples_uniform = torch.where(replace_mask, new_samples, z_samples_uniform)
-        #     mask_invalid = torch.abs(z_samples_uniform) >= (1/(2*delta))
-        #     total_invalid = mask_invalid.sum().item()
-        # z_samples = z_samples_uniform
-        # abs_z = torch.abs(z_samples) 
-        # abs_v = torch.abs(v).unsqueeze(1) 
-        # # cond1 = abs_z < (abs_v / delta)
-        # cond2 = (abs_z < 1/(2*delta)) & (abs_z >= (abs_v / delta))
-        # grad_contrib = torch.zeros_like(z_samples)
-        # grad_contrib = torch.where(cond2, abs_z/(2*delta), grad_contrib)
-        
-        # grad_est = grad_contrib.mean(dim=1)  
-        # grad_input = grad_est.view(original_shape) * grad_output
-        
-        # return grad_input, None, None, None
         """
         反向传播：使用显式表达式计算代理梯度
         """
@@ -330,7 +351,10 @@ class Uniform(torch.autograd.Function):
         # # 保存原始形状以便后续恢复
         # original_shape = x.shape
         # x_flat = x.view(-1)  # 展平为一维向量以便处理
-        if use_sum == False:
+        C = math.sqrt(3)
+        # if use_sum == False:
+        if delta <= 1.0 / (2.0 * C):
+            # single-boundary formula
             _lambda = 3.0
             # 按_lambda=3计算
             # print(f"Uniform")
@@ -353,7 +377,8 @@ class Uniform(torch.autograd.Function):
             
             # 计算条件：|v| < δ * M = min(δλ, 1/2)
             # 这个条件确保积分下限小于上限
-            condition = v < (delta * math.sqrt(M))
+            # condition = v < (delta * math.sqrt(M))
+            condition = abs_v < (delta * math.sqrt(M))
             
             # 初始化梯度为0
             grad_input = torch.zeros_like(x)
@@ -451,69 +476,6 @@ class Uniform(torch.autograd.Function):
         return grad_input * grad_output, None, None
 
 
-
-class RoundSTE(nn.Module):
-    def __init__(self):
-        super().__init__()
-    
-    def forward(self, x):
-        return round_ste(x)
-    
-    def extra_repr(self):
-        return "round_ste"
-
-class UniformModule(nn.Module):
-    def __init__(self, delta, use_sum):
-        super().__init__()
-        self.delta = delta
-        self.use_sum = use_sum
-        
-    def forward(self, x):
-        return Uniform.apply(x, self.delta, self.use_sum)
-    
-    def extra_repr(self):
-        return f"Uniform(delta={self.delta} use_sum={self.use_sum})"
-    
-
-class NormalModule(nn.Module):
-    def __init__(self, delta, use_sum):
-        super().__init__()
-        self.delta = delta
-        self.use_sum = use_sum
-        
-    def forward(self, x):
-        return Normal.apply(x, self.delta, self.use_sum)
-    
-    def extra_repr(self):
-        return f"Normal(delta={self.delta} use_sum={self.use_sum})"
-    
-
-
-class LaplaceModule(nn.Module):
-    def __init__(self, delta, use_sum):
-        super().__init__()
-        self.delta = delta
-        self.use_sum = use_sum
-        
-    def forward(self, x):
-        return Laplace.apply(x, self.delta, self.use_sum)
-    
-    def extra_repr(self):
-        return f"Laplace(delta={self.delta} use_sum={self.use_sum})"
-    
-
-class HTGEModule(nn.Module):
-    def __init__(self, t):
-        super().__init__()
-        self.t = t
-        
-    def forward(self, x):
-        return HTGE.apply(x, self.t)
-    
-    def extra_repr(self):
-        return f"HTGE(delta={self.t})"
-    
-
 # 向量化加速版本
 class Normal(torch.autograd.Function):
     @staticmethod
@@ -560,7 +522,10 @@ class Normal(torch.autograd.Function):
         (x, ) = ctx.saved_tensors
         delta = ctx.delta
         use_sum = ctx.use_sum
-        if use_sum == False:
+        C = 3
+        # if use_sum == False:
+        if delta <= 1.0 / (2.0 * C):
+            # single-boundary formula
             # print(f"normal")
             
             # 步骤1: 计算s(u) = round(u - 0.5) + 0.5，即最近的半整数点
@@ -571,7 +536,8 @@ class Normal(torch.autograd.Function):
             # 这是公式中的截断点
             # C = 1.0 / (2.0 * delta)
             # 这个位置可能得改。
-            C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
+            # C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
+            C = torch.tensor(3.0, device=x.device, dtype=x.dtype)
             
             # 步骤3: 计算Φ(C)，即标准正态分布在C处的累积分布函数值
             # 使用误差函数erf计算标准正态分布CDF: Φ(x) = 0.5 * [1 + erf(x/√2)]
@@ -604,7 +570,7 @@ class Normal(torch.autograd.Function):
             grad_input = grad_input * grad_output
         else:
             # print("usesum")
-                        # 求和版本（新逻辑）
+            # 求和版本（新逻辑）
             # 保存原始形状以便后续恢复
             original_shape = x.shape
             x_flat = x.view(-1)  # 展平为一维向量以便处理
@@ -692,7 +658,6 @@ class Normal(torch.autograd.Function):
         # 第一个返回值是x的梯度，第二个是delta的梯度（这里不计算，返回None）
         return grad_input, None, None
     
-
 
 # 向量化加速版本
 class Laplace(torch.autograd.Function):
@@ -784,7 +749,6 @@ class Laplace(torch.autograd.Function):
         # 返回梯度
         # 第一个返回值是x的梯度，第二个是delta的梯度（这里不计算，返回None）
         return grad_input, None, None
-
 
 
 # 向量化加速版本
