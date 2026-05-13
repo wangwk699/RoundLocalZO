@@ -106,11 +106,11 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str,
                         default='/cpfs01/user/chenmengzhao/llama_quantization/llama-hf/llama-7b', help='model name')
-    parser.add_argument('--scales-output-path', type=str, default='./act_scales/',
+    parser.add_argument('--scales-output-path', type=str, default='./act_scales/squad/',
                         help='where to save the act scales')
-    parser.add_argument('--shifts-output-path', type=str, default='./act_shifts/',
+    parser.add_argument('--shifts-output-path', type=str, default='./act_shifts/squad/',
                         help='where to save the act shifts')
-    parser.add_argument("--calib_dataset",type=str,default="wikitext2",
+    parser.add_argument("--calib_dataset",type=str,default="squad",  # wikitext2   squad
         choices=["wikitext2", "ptb", "c4", "mix","pile"],
         help="Where to extract calibration data from.",)
     parser.add_argument('--num-samples', type=int, default=128)

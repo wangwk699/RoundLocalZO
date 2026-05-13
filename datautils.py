@@ -180,12 +180,74 @@ def get_c4_new(nsamples, seed, seqlen, model):
     valenc = valenc.input_ids[:, : (256 * seqlen)]
     return trainloader, valenc
 
+def _format_squad_example(example, include_answer=True):
+    """
+    将 HuggingFace squad 样本转成 causal LM 校准用的纯文本。
+    这里刻意不复用 tasks.py 的 SQuADDataset，避免 datautils.py 和 tasks.py 耦合。
+    """
+    title = example["title"]
+    context = example["context"]
+    question = example["question"].strip()
+
+    answers = example["answers"]["text"]
+    answer = answers[0] if len(answers) > 0 else ""
+
+    text = f"Title: {title}\nContext: {context}\nQuestion: {question}\nAnswer:"
+    if include_answer:
+        text += f" {answer}"
+    return text
+
+
+def get_squad(nsamples, seed, seqlen, model):
+    print("get_squad")
+
+    traindata = load_dataset("squad", split="train")
+    valdata = load_dataset("squad", split="validation")
+
+    tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
+
+    # 采用和 tasks.py 的 SQuADv2Template 相近的 prompt 形式：
+    # Title / Context / Question / Answer
+    train_text = "\n\n".join(
+        _format_squad_example(example, include_answer=True)
+        for example in traindata
+    )
+    val_text = "\n\n".join(
+        _format_squad_example(example, include_answer=True)
+        for example in valdata
+    )
+
+    trainenc = tokenizer(train_text, return_tensors="pt")
+    testenc = tokenizer(val_text, return_tensors="pt")
+
+    if trainenc.input_ids.shape[1] <= seqlen:
+        raise ValueError(
+            f"SQuAD token length {trainenc.input_ids.shape[1]} is <= seqlen {seqlen}; "
+            "cannot sample calibration windows."
+        )
+
+    random.seed(seed)
+    trainloader = []
+
+    for _ in range(nsamples):
+        i = random.randint(0, trainenc.input_ids.shape[1] - seqlen - 1)
+        j = i + seqlen
+
+        inp = trainenc.input_ids[:, i:j]
+        tar = inp.clone()
+        tar[:, :-1] = -100
+
+        trainloader.append((inp, tar))
+
+    return trainloader, testenc
 
 def get_loaders(
     name, nsamples=128, seed=0, seqlen=2048, model='',
 ):
     if 'wikitext2' in name:
         return get_wikitext2(nsamples, seed, seqlen, model)
+    if 'squad' in name.lower():
+        return get_squad(nsamples, seed, seqlen, model)
     if 'pile' in name:
         return get_pile(nsamples, seed, seqlen, model)
     if 'ptb' in name:
