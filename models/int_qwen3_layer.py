@@ -210,7 +210,7 @@ class QuantQwen3DecoderLayer(nn.Module):
             if isinstance(m, (QuantLinear, QuantMatMul)):
                 names.append(name)
                 m.set_quant_state(weight_quant, act_quant)
-      
+    
     def smooth_and_quant_temporary(self):
         if self.let:
             with torch.no_grad():

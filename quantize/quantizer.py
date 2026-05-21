@@ -275,7 +275,11 @@ class Uniform(torch.autograd.Function):
         (x, ) = ctx.saved_tensors
         delta = ctx.delta
         use_sum = ctx.use_sum
-        if use_sum == False:
+
+        C = math.sqrt(3)
+        # if use_sum == False:
+        if delta <= 1.0 / (2.0 * C):
+            # single-boundary formula
             _lambda = 3.0
 
             b = torch.round(x - 0.5) + 0.5
@@ -289,7 +293,8 @@ class Uniform(torch.autograd.Function):
             
             # 计算条件：|v| < δ * M = min(δλ, 1/2)
             # 这个条件确保积分下限小于上限
-            condition = v < (delta * math.sqrt(M))
+            # condition = v < (delta * math.sqrt(M))
+            condition = abs_v < (delta * math.sqrt(M))
             
             # 初始化梯度为0
             grad_input = torch.zeros_like(x)
@@ -496,23 +501,19 @@ class Normal(torch.autograd.Function):
         (x, ) = ctx.saved_tensors
         delta = ctx.delta
         use_sum = ctx.use_sum
-        if use_sum == False:
-            # print(f"normal")
+        C = 3
+        if delta <= 1.0 / (2.0 * C):
+            # single-boundary formula
             
             # 步骤1: 计算s(u) = round(u - 0.5) + 0.5，即最近的半整数点
             # 这是公式中的s(u)函数，用于找到最近的半整数点
             s_u = torch.round(x - 0.5) + 0.5
             
-            # 步骤2: 计算C = 1/(2δ)
-            # 这是公式中的截断点
-            # C = 1.0 / (2.0 * delta)
-            # 这个位置可能得改。
-            C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
-            
+            # 步骤2: C = 3
+            C = torch.tensor(3.0, device=x.device, dtype=x.dtype)
+
             # 步骤3: 计算Φ(C)，即标准正态分布在C处的累积分布函数值
             # 使用误差函数erf计算标准正态分布CDF: Φ(x) = 0.5 * [1 + erf(x/√2)]
-            # Phi_C = 0.5 * (1.0 + torch.erf(C / math.sqrt(2.0)))
-            # Phi_C = 0.5 * (1.0 + torch.erf(C / torch.sqrt(torch.tensor(2.0, device=C.device, dtype=C.dtype))))
             Phi_C = 0.5 * (1.0 + torch.erf(C / torch.sqrt(torch.tensor(2.0, device=x.device, dtype=x.dtype))))
 
             # 步骤4: 计算归一化因子: 1/(2Φ(C) - 1)
