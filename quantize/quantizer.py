@@ -112,20 +112,14 @@ class UniformAffineQuantizer(nn.Module):
 
         if self.delta is not None and self.method == "Uniform":
             self.round_module = UniformModule(delta, use_sum)
-            # self._round_func = Uniform.apply(delta)
         elif self.delta is not None and self.method == "Normal":
             self.round_module = NormalModule(delta, use_sum)
-            # self._round_func = Normal.apply(delta)
         elif self.delta is not None and self.method == "Laplace":
             self.round_module = LaplaceModule(delta, use_sum)
-            # self._round_func = Laplace.apply(delta)
         elif self.t is not None and self.method == "HTGE":
             self.round_module = HTGEModule(t)
-            # self._round_func = HTGE.apply(t)
         else:
             self.round_module = RoundSTE()
-            # self._round_func = round_ste
-            # self._round_func = roundSTE.apply
 
 
     def change_n_bits(self, n_bits):
@@ -142,31 +136,18 @@ class UniformAffineQuantizer(nn.Module):
             pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
             x = torch.cat((x, pad_zeros),dim=1)
         if self.descale is not None:
-            # 使用对数空间或更稳定的表示
-            # log_scale = torch.log(scale.clamp(min=CLIPMIN))
-            # log_descale = self.descale  # 学习log尺度偏移
-            # eff_scale = torch.exp(log_scale + log_descale)
             eff_scale = (scale + self.descale)
-            # 同时优化内外的scale
-            # scale = 
         else:
             eff_scale = scale
 
-        # with torch.no_grad():
-        #     eff_scale_detach = eff_scale.clamp(min=CLIPMIN, max=1e4)
-        # eff_scale = eff_scale_detach
         eff_scale = eff_scale.clamp(min=1e-2, max=1e4)
 
-        # eff_scale = scale
         if self.group_size:
             assert len(x.shape)==2, "only support linear layer now"
             dim1, dim2 = x.shape
             x = x.reshape(-1, self.group_size)
 
         x_int = self.round_module.forward(x * (1.0 / eff_scale))
-        # x_int = self.round_module.forward(x * (1.0 / scale))
-        # x_int = self._round_func(x / scale)
-        # x_int = round_ste(x / eff_scale)
 
         if round_zero_point is not None:
             x_int = x_int.add(round_zero_point)
@@ -176,20 +157,10 @@ class UniformAffineQuantizer(nn.Module):
             x_dequant = x_dequant.sub(round_zero_point)
         #add
         if self.descale is not None:
-            # x_dequant = x_dequant.view(x_dequant.shape[0],-1,self.group_scale)
-            # x_dequant = x_dequant.mul(scale.unsqueeze(-1).repeat(1,1,self.group_scale)+self.descale)
             x_dequant = x_dequant.mul(eff_scale)
-            # x_dequant = x_dequant.mul(scale)
-            # x_dequant = x_dequant.view(x_dequant.shape[0],-1)
         else:
             x_dequant = x_dequant.mul(scale)
-        #add
-        # if self.dezero is not None:
-        #     x_dequant = x_dequant.view(x_dequant.shape[0],-1,self.group_zero)
-        #     x_dequant = x_dequant.add(self.dezero)
-        #     x_dequant = x_dequant.view(x_dequant.shape[0],-1)
-        # if self.group_size or (self.group_scale and self.descale is not None):
-        #     x_dequant = x_dequant.reshape(dim1, dim2)
+
         if self.group_size:
             x_dequant = x_dequant.reshape(dim1, dim2)
         if self.deficiency > 0:
@@ -207,17 +178,9 @@ class UniformAffineQuantizer(nn.Module):
             with torch.no_grad():
                 x_detached = x.detach()
                 self.per_token_dynamic_calibration(x_detached)
-            # print(f"动态调整量化参数...")
-            # x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
-            # x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
         else:
             raise NotImplementedError()  
-            # x_dequant = self.fake_quant(x, self.scales, self.zeros)
-            # pass
-            # # print(f"不动态调整量化参数...")
-            # x_dequant = self.fake_quant(x, self.scales, self.zeros)
-            # pass 
-        # x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
+
         x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
         
         return x_dequant
@@ -231,13 +194,7 @@ class UniformAffineQuantizer(nn.Module):
                     pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
                     x = torch.cat((x,pad_zeros),dim=1)
                     x = x.reshape(-1,self.group_size)
-            # if self.descale is not None and self.group_scale:
-            #     if self.deficiency == 0:
-            #         x = x.reshape(-1,self.group_scale)
-            #     else:
-            #         pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-            #         x = torch.cat((x,pad_zeros),dim=1)
-            #         x = x.reshape(-1,self.group_scale)
+
             reduce_shape = [-1]
             # 这里的x.amin传梯度吗？
             xmin = x.amin(reduce_shape, keepdim=True)
@@ -263,15 +220,8 @@ class UniformAffineQuantizer(nn.Module):
     def register_scales_and_zeros(self):
         self.register_buffer('scales', self.scale)
         self.register_buffer('zeros', self.round_zero_point)
-        #add
-        # print(f"{self.scale}")
-        # print(f"self.scale is nan: {torch.isnan(self.scale).any()}")
         descale = torch.zeros_like(self.scale)
-        # print(f"self.descale{descale}")
         self.descale = nn.Parameter(descale)
-        # self.descale = nn.Parameter(descale.unsqueeze(-1).repeat(1,1,self.group_scale))
-        # dezero = torch.zeros_like(self.round_zero_point)
-        # self.dezero = nn.Parameter(dezero.unsqueeze(-1).repeat(1,1,self.group_zero))
         del self.scale
         del self.round_zero_point
 
@@ -295,31 +245,17 @@ class Uniform(torch.autograd.Function):
         use_sum = ctx.use_sum
 
         C = math.sqrt(3)
-        # if use_sum == False:
         if delta <= 1.0 / (2.0 * C):
             # single-boundary formula
             _lambda = 3.0
-            # 按_lambda=3计算
-            # print(f"Uniform")
-            # 计算v(u) = u - b(u)，其中b(u)是最近的半整数点
-            # b(u) = round(u - 0.5) + 0.5
             b = torch.round(x - 0.5) + 0.5
             v = x - b  # v ∈ [-0.5, 0.5]
             
             # 计算|v|
             abs_v = torch.abs(v)
             
-            # 计算显式代理梯度表达式
-            # 根据推导，当2|z|δ < 1时有效，即|z| < 1/(2δ)
-            # 代理梯度 = (1/(2λ)) * ∫_{|v|/δ}^{1/(2δ)} (z/(2δ)) dz * 2
-            #         = (1/(4λδ)) * [(1/(2δ))² - (|v|/δ)²]
-            #         = 1/(16λδ³) - |v|²/(4λδ³)
-            
-            # 首先计算M = min(λ, 1/(2δ))
             M = _lambda
             
-            # 计算条件：|v| < δ * M = min(δλ, 1/2)
-            # 这个条件确保积分下限小于上限
             condition = abs_v < (delta * math.sqrt(M))
             
             # 初始化梯度为0
@@ -339,8 +275,6 @@ class Uniform(torch.autograd.Function):
             # 保存原始形状以便后续恢复
             original_shape = x.shape
             x_flat = x.view(-1)  # 展平为一维向量以便处理
-            # 超参数设置：根据均匀分布[-√3, √3]，λ=√3
-            # print(f"use_sum")
             lambda_val = math.sqrt(3)  # 对应公式中的C = √3
             
             # 计算阈值：|u - b_k| < √3δ，即搜索半径
@@ -530,41 +464,22 @@ class Normal(torch.autograd.Function):
         C = 3
         if delta <= 1.0 / (2.0 * C):
             # single-boundary formula
-            
-            # 步骤1: 计算s(u) = round(u - 0.5) + 0.5，即最近的半整数点
-            # 这是公式中的s(u)函数，用于找到最近的半整数点
             s_u = torch.round(x - 0.5) + 0.5
             
-            # # 步骤2: 计算C = 1/(2δ)
-            # # 这是公式中的截断点
-            # # C = 1.0 / (2.0 * delta)
-            # # 这个位置可能得改。
-            # C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
-
-            # 步骤2: C = 3
             C = torch.tensor(3.0, device=x.device, dtype=x.dtype)
             
-            # 步骤3: 计算Φ(C)，即标准正态分布在C处的累积分布函数值
-            # 使用误差函数erf计算标准正态分布CDF: Φ(x) = 0.5 * [1 + erf(x/√2)]
-            # Phi_C = 0.5 * (1.0 + torch.erf(C / math.sqrt(2.0)))
-            # Phi_C = 0.5 * (1.0 + torch.erf(C / torch.sqrt(torch.tensor(2.0, device=C.device, dtype=C.dtype))))
             Phi_C = 0.5 * (1.0 + torch.erf(C / torch.sqrt(torch.tensor(2.0, device=x.device, dtype=x.dtype))))
 
-            # 步骤4: 计算归一化因子: 1/(2Φ(C) - 1)
-            # 这是公式中的归一化项，确保概率密度函数在截断后仍然归一化
+            # 计算归一化因子: 1/(2Φ(C) - 1)
             normalization_factor = 1.0 / (2.0 * Phi_C - 1.0)
             
-            # 步骤5: 计算高斯核部分: exp(-(x - s(x))²/(2δ²))
-            # 这是公式中的exp(-(u - s(u))²/(2δ²))项
+            # 计算高斯核部分: exp(-(x - s(x))²/(2δ²))
             gaussian_kernel = torch.exp(-(x - s_u) ** 2 / (2.0 * delta ** 2))
             
-            # 步骤6: 计算截断项: exp(-C²/2) = exp(-1/(8δ²))
-            # 这是公式中的exp(-C²/2)项，其中C²/2 = 1/(8δ²)
+            # 计算截断项: exp(-C²/2) = exp(-1/(8δ²))
             truncation_term = torch.exp(-C ** 2 / 2.0)  # 等价于exp(-1/(8δ²))
             
-            # 步骤7: 计算完整梯度表达式
-            # 根据公式: I = normalization_factor * 1/(δ√(2π)) * (gaussian_kernel - truncation_term)
-            # 其中1/(δ√(2π))是正态分布的归一化常数
+            # 计算完整梯度表达式
             normalizing_constant = 1.0 / (delta * math.sqrt(2.0 * math.pi))
             
             # 计算最终梯度
@@ -574,8 +489,6 @@ class Normal(torch.autograd.Function):
             # 这是链式法则的应用
             grad_input = grad_input * grad_output
         else:
-            # print("usesum")
-                        # 求和版本（新逻辑）
             # 保存原始形状以便后续恢复
             original_shape = x.shape
             x_flat = x.view(-1)  # 展平为一维向量以便处理
