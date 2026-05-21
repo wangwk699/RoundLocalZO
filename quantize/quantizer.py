@@ -9,7 +9,15 @@ import math
 
 CLIPMIN = 1e-5
 
+# Proposition 4.2: E[z^2] for N(0,1) truncated to [-C, C] (Appendix A.3.2, C=3 in experiments).
+# g_delta(u) = g(u) / c; uniform on [-sqrt(3), sqrt(3)] has c=1.
+def truncated_normal_z2_expectation(C: float = 3.0) -> float:
+    phi_c = 0.5 * (1.0 + math.erf(C / math.sqrt(2.0)))  # standard normal CDF Phi(C)
+    denom = (2.0 * phi_c - 1.0) * math.sqrt(2.0 * math.pi)
+    return 1.0 - (6.0 * math.exp(-(C * C) / 2.0)) / denom
 
+
+TRUNCATED_NORMAL_C = truncated_normal_z2_expectation(3.0)
 
 
 def round_ste(x: torch.Tensor):
@@ -451,6 +459,8 @@ class Normal(torch.autograd.Function):
         
         最终梯度 = 归一化因子 * (高斯核 - 截断项)
         
+        Proposition 4.2: 截断正态的 E[z^2]=c != 1，需 g_delta = g / c（见 TRUNCATED_NORMAL_C）。
+        
         Args:
             grad_output: 上游梯度
         Returns:
@@ -461,6 +471,7 @@ class Normal(torch.autograd.Function):
         (x, ) = ctx.saved_tensors
         delta = ctx.delta
         use_sum = ctx.use_sum
+        norm_c = TRUNCATED_NORMAL_C
         C = 3
         if delta <= 1.0 / (2.0 * C):
             # single-boundary formula
@@ -482,8 +493,9 @@ class Normal(torch.autograd.Function):
             # 计算完整梯度表达式
             normalizing_constant = 1.0 / (delta * math.sqrt(2.0 * math.pi))
             
-            # 计算最终梯度
+            # 计算最终梯度（式 53），再按 Proposition 4.2 除以 c
             grad_input = normalization_factor * normalizing_constant * (gaussian_kernel - truncation_term)
+            grad_input = grad_input / norm_c
             
             # 将上游梯度乘以本地梯度
             # 这是链式法则的应用
@@ -564,7 +576,7 @@ class Normal(torch.autograd.Function):
             
             # 应用公式中的系数: normalization_factor * normalizing_constant
             coeff = normalization_factor * normalizing_constant
-            grad_est = coeff * sum_contrib
+            grad_est = coeff * sum_contrib / norm_c
             
             # 恢复原始形状
             grad_input = grad_est.view(original_shape)
