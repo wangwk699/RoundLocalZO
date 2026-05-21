@@ -769,6 +769,9 @@ def main():
                 m.set_quant_state(weight_quant=wq)
     enable_quant(lm.model, wq=True)  
     # lm.model = 
+    if not args.train:
+        lm.model = lm.model.to(lm.device)
+        lm.model.eval()
     framework = Framework(args, task, lm.model, lm.tokenizer)
     if args.train_set_seed is not None or args.num_train_sets is not None:
         # Eval samples share one (or multiple) training set(s)

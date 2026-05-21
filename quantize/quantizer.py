@@ -34,152 +34,6 @@ class roundSTE(torch.autograd.Function):
         # 反向传播：梯度直接通过，乘以1
         return grad_output
 
-'''
-class UniformAffineQuantizer(nn.Module):
-    def __init__(
-        self,
-        n_bits: int = 8,
-        symmetric: bool = False,
-        per_channel_axes=[],
-        metric="minmax",
-        dynamic=False,
-        dynamic_method="per_cluster",
-        group_size=None,
-        shape=None,
-        lwc=False,
-        disable_zero_point=False,
-    ):
-        """
-        support cluster quantize
-        dynamic_method support per_token and per_cluster
-        """
-        super().__init__()
-        self.symmetric = symmetric
-        self.disable_zero_point = disable_zero_point
-        assert 2 <= n_bits <= 16, "bitwidth not supported"
-        self.n_bits = n_bits
-        if self.disable_zero_point:
-            self.qmin = -(2 ** (n_bits - 1))
-            self.qmax = 2 ** (n_bits - 1) - 1
-        else:
-            self.qmin = 0
-            self.qmax = 2 ** (n_bits) - 1
-        self.per_channel_axes = per_channel_axes
-        self.metric = metric
-        self.cluster_counts = None
-        self.cluster_dim = None
-
-        self.scale = None
-        self.zero_point = None
-        self.round_zero_point = None
-
-        self.cached_xmin = None
-        self.cached_xmax = None
-        self.dynamic = dynamic
-        self.dynamic_method = dynamic_method
-        self.deficiency = 0
-        self.lwc = lwc
-        
-        init_value = 4.             # inti value of learnable weight clipping
-        if lwc:
-            if group_size:
-                dim1 = int(shape[0]*math.ceil(shape[1]/group_size))
-                self.deficiency = shape[-1]%group_size
-                if self.deficiency > 0:
-                    self.deficiency = group_size - self.deficiency
-                    assert self.symmetric   # support for mlc-llm symmetric quantization
-            else:
-                dim1 = shape[0]
-            self.upbound_factor = nn.Parameter(torch.ones((dim1,1))*init_value)
-            self.lowbound_factor = nn.Parameter(torch.ones((dim1,1))*init_value)
-        self.sigmoid = nn.Sigmoid()
-
-        self.enable = True
-        self.group_size = group_size
-
-    def change_n_bits(self, n_bits):
-        self.n_bits = n_bits
-        if self.disable_zero_point:
-            self.qmin = -(2 ** (n_bits - 1))
-            self.qmax = 2 ** (n_bits - 1) - 1
-        else:
-            self.qmin = 0
-            self.qmax = 2 ** (n_bits) - 1
-
-    def fake_quant(self, x, scale, round_zero_point):
-        if self.deficiency > 0:
-            pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-            x = torch.cat((x,pad_zeros),dim=1)
-        
-        if self.group_size:
-            assert len(x.shape)==2, "only support linear layer now"
-            dim1, dim2 = x.shape
-            x = x.reshape(-1, self.group_size)
-        x_int = round_ste(x / scale)
-        if round_zero_point is not None:
-            x_int = x_int.add(round_zero_point)
-        x_int = x_int.clamp(self.qmin, self.qmax)
-        x_dequant = x_int
-        if round_zero_point is not None:
-            x_dequant = x_dequant.sub(round_zero_point)
-        x_dequant = x_dequant.mul(scale)
-        if self.group_size:
-            x_dequant = x_dequant.reshape(dim1, dim2)
-        if self.deficiency > 0:
-            x_dequant = x_dequant[:,:-self.deficiency]
-        return x_dequant
-    
-
-    def forward(self, x: torch.Tensor):
-        if self.n_bits >= 16 or not self.enable:
-            return x
-        if self.metric == "fix0to1":
-            return x.mul_(2**self.n_bits-1).round_().div_(2**self.n_bits-1)
-
-        if self.dynamic_method == "per_token" or self.dynamic_method == "per_channel":
-            self.per_token_dynamic_calibration(x)
-        else:
-            raise NotImplementedError()   
-
-        x_dequant = self.fake_quant(x, self.scale, self.round_zero_point)
-        return x_dequant
-
-    def per_token_dynamic_calibration(self, x):
-        if self.group_size:
-            if self.deficiency == 0:
-                x = x.reshape(-1,self.group_size)
-            else:
-                pad_zeros = torch.zeros((x.shape[0],self.deficiency),dtype=x.dtype,device=x.device)
-                x = torch.cat((x,pad_zeros),dim=1)
-                x = x.reshape(-1,self.group_size)
-        reduce_shape = [-1]
-        xmin = x.amin(reduce_shape, keepdim=True)
-        xmax =  x.amax(reduce_shape, keepdim=True)
-        if self.lwc:
-            xmax = self.sigmoid(self.upbound_factor)*xmax
-            xmin = self.sigmoid(self.lowbound_factor)*xmin
-        if self.symmetric:
-            abs_max = torch.max(xmax.abs(),xmin.abs())
-            scale = abs_max / (2**(self.n_bits-1)-1)
-            self.scale = scale.clamp(min=CLIPMIN, max=1e4)
-            zero_point = (2**(self.n_bits-1)-1)*torch.ones_like(self.scale)
-        else:
-            range = xmax - xmin
-            scale = range / (2**self.n_bits-1)
-            self.scale = scale.clamp(min=CLIPMIN, max=1e4)
-            zero_point = -(xmin) / (self.scale)
-        if self.disable_zero_point:
-            self.round_zero_point = None
-        else:
-            self.round_zero_point = zero_point.clamp(min=-1e4, max=1e4).round()
-        
-    def register_scales_and_zeros(self):
-        self.register_buffer('scales', self.scale)
-        self.register_buffer('zeros', self.round_zero_point)
-        del self.scale
-        del self.round_zero_point
-'''
-
 class UniformAffineQuantizer(nn.Module):
     def __init__(
         self,
@@ -433,53 +287,17 @@ class Uniform(torch.autograd.Function):
     
     @staticmethod
     def backward(ctx, grad_output):
-        # (x,) = ctx.saved_tensors
-        # delta = ctx.delta
-        # _lambda = ctx._lambda
-        # sample_size = ctx.sample_size
-        # # print(f"使用了我们的梯度反传")
-        
-        # original_shape = x.shape
-        # x_flat = x.view(-1)
-        # num_elements = x_flat.numel()
-        # u = x_flat
-        # k = torch.round(u - 0.5)
-        # b = k + 0.5
-        # v = u - b
-        # z_samples_uniform = (2 * _lambda) * torch.rand(num_elements, sample_size, device=x.device) - _lambda
-        # mask_invalid = torch.abs(z_samples_uniform) >= (1/(2*delta))
-        # total_invalid = mask_invalid.sum().item()
-        # while total_invalid > 0:
-        #     new_samples = (2 * _lambda) * torch.rand(num_elements, sample_size, device=x.device) - _lambda
-        #     new_mask_invalid = torch.abs(new_samples) >= (1/(2*delta))
-        #     replace_mask = mask_invalid & (~new_mask_invalid)
-        #     # z_samples_uniform = torch.where(replace_mask.unsqueeze(1).expand_as(z_samples_uniform) if z_samples_uniform.dim() > 1 else replace_mask, 
-        #     #                               new_samples, z_samples_uniform)
-        #     z_samples_uniform = torch.where(replace_mask, new_samples, z_samples_uniform)
-        #     mask_invalid = torch.abs(z_samples_uniform) >= (1/(2*delta))
-        #     total_invalid = mask_invalid.sum().item()
-        # z_samples = z_samples_uniform
-        # abs_z = torch.abs(z_samples) 
-        # abs_v = torch.abs(v).unsqueeze(1) 
-        # # cond1 = abs_z < (abs_v / delta)
-        # cond2 = (abs_z < 1/(2*delta)) & (abs_z >= (abs_v / delta))
-        # grad_contrib = torch.zeros_like(z_samples)
-        # grad_contrib = torch.where(cond2, abs_z/(2*delta), grad_contrib)
-        
-        # grad_est = grad_contrib.mean(dim=1)  
-        # grad_input = grad_est.view(original_shape) * grad_output
-        
-        # return grad_input, None, None, None
         """
         反向传播：使用显式表达式计算代理梯度
         """
         (x, ) = ctx.saved_tensors
         delta = ctx.delta
         use_sum = ctx.use_sum
-        # # 保存原始形状以便后续恢复
-        # original_shape = x.shape
-        # x_flat = x.view(-1)  # 展平为一维向量以便处理
-        if use_sum == False:
+
+        C = math.sqrt(3)
+        # if use_sum == False:
+        if delta <= 1.0 / (2.0 * C):
+            # single-boundary formula
             _lambda = 3.0
             # 按_lambda=3计算
             # print(f"Uniform")
@@ -502,7 +320,7 @@ class Uniform(torch.autograd.Function):
             
             # 计算条件：|v| < δ * M = min(δλ, 1/2)
             # 这个条件确保积分下限小于上限
-            condition = v < (delta * math.sqrt(M))
+            condition = abs_v < (delta * math.sqrt(M))
             
             # 初始化梯度为0
             grad_input = torch.zeros_like(x)
@@ -709,18 +527,22 @@ class Normal(torch.autograd.Function):
         (x, ) = ctx.saved_tensors
         delta = ctx.delta
         use_sum = ctx.use_sum
-        if use_sum == False:
-            # print(f"normal")
+        C = 3
+        if delta <= 1.0 / (2.0 * C):
+            # single-boundary formula
             
             # 步骤1: 计算s(u) = round(u - 0.5) + 0.5，即最近的半整数点
             # 这是公式中的s(u)函数，用于找到最近的半整数点
             s_u = torch.round(x - 0.5) + 0.5
             
-            # 步骤2: 计算C = 1/(2δ)
-            # 这是公式中的截断点
-            # C = 1.0 / (2.0 * delta)
-            # 这个位置可能得改。
-            C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
+            # # 步骤2: 计算C = 1/(2δ)
+            # # 这是公式中的截断点
+            # # C = 1.0 / (2.0 * delta)
+            # # 这个位置可能得改。
+            # C = torch.tensor(1.0 / (2.0 * delta), device=x.device, dtype=x.dtype)
+
+            # 步骤2: C = 3
+            C = torch.tensor(3.0, device=x.device, dtype=x.dtype)
             
             # 步骤3: 计算Φ(C)，即标准正态分布在C处的累积分布函数值
             # 使用误差函数erf计算标准正态分布CDF: Φ(x) = 0.5 * [1 + erf(x/√2)]
