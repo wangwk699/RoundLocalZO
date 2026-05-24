@@ -16,9 +16,7 @@ def truncated_normal_z2_expectation(C: float = 3.0) -> float:
     denom = (2.0 * phi_c - 1.0) * math.sqrt(2.0 * math.pi)
     return 1.0 - (6.0 * math.exp(-(C * C) / 2.0)) / denom
 
-
 TRUNCATED_NORMAL_C = truncated_normal_z2_expectation(3.0)
-
 
 def round_ste(x: torch.Tensor):
     """
@@ -446,8 +444,6 @@ class Normal(torch.autograd.Function):
         - δ是正态分布的标准差
         - s(u) = round(u - 0.5) + 0.5，即最近的半整数点
         - u是输入值x
-        
-        这个公式是在条件2|z|δ ≤ 1下推导得到的，其中C = 1/(2δ)
         
         推导过程：
         1. 令C = 1/(2δ)
