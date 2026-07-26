@@ -74,5 +74,3 @@ CUDA_VISIBLE_DEVICES=2 python -m debugpy --listen 6001 --wait-for-client train_m
     --save_total_limit 0 \
     --save_steps 999999 \
     --evaluation_strategy "no" \
-    --num_dev 5 \
-    --num_eval 5
