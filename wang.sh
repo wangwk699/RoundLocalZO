@@ -3,7 +3,7 @@
 # --- 基础配置 ---
 METHOD="Uniform"              # STE HTGE Uniform Normal PWL MAD DSQ
 TASK="SST2"                  # SST2 RTE WIC SQuAD
-STEPS=10
+STEPS=4000
 IR=5e-6
 IR_scheduler="constant_with_warmup"  # "constant_with_warmup"  "constant"
 Warmup_ratio=0.03
