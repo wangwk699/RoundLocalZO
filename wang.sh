@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # --- 基础配置 ---
-METHOD="Uniform"              # STE HTGE Uniform Normal
-TASK="SST2"                  # 6 个任务  SST2 RTE CB BoolQ WSC WIC MultiRC
+METHOD="Uniform"              # STE HTGE Uniform Normal PWL MAD DSQ
+TASK="SST2"                  # SST2 RTE WIC SQuAD
 STEPS=10
 IR=5e-6
 IR_scheduler="constant_with_warmup"  # "constant_with_warmup"  "constant"
 Warmup_ratio=0.03
 
 USE_SUM=False
+DSQ_ALPHA=0.2
 MODEL=Qwen3-8B
 BATCH_SIZE=2
 LOGGING_STEPS=$((1000 / BATCH_SIZE))
@@ -38,9 +39,23 @@ elif [ "$METHOD" == "Normal" ]; then
     T=16    
     DELTA=0.15
     DIR_SUFFIX="DELTA-$DELTA-USE_SUM-$USE_SUM-BATCH_SIZE-$BATCH_SIZE"
+elif [ "$METHOD" == "PWL" ] || [ "$METHOD" == "MAD" ]; then
+    T=16
+    DELTA=0.285
+    DIR_SUFFIX="BATCH_SIZE-$BATCH_SIZE"
+elif [ "$METHOD" == "DSQ" ]; then
+    T=16
+    DELTA=0.285
+    DIR_SUFFIX="DSQ_ALPHA-$DSQ_ALPHA-BATCH_SIZE-$BATCH_SIZE"
 else
     echo "Error: METHOD=$METHOD not supported"
     exit 1
+fi
+
+if [ "$TASK" == "SQuAD" ]; then
+    TRAIN_AS_CLASSIFICATION=False
+else
+    TRAIN_AS_CLASSIFICATION=True
 fi
 
 # 构建完整路径
@@ -56,7 +71,7 @@ CUDA_VISIBLE_DEVICES=2 python -m debugpy --listen 6001 --wait-for-client train_m
     --lwc \
     --resume "$RESUME" \
     --train \
-    --train_as_classification True \
+    --train_as_classification "$TRAIN_AS_CLASSIFICATION" \
     --task_name "$TASK" \
     --trainer "$METHOD" \
     --max_steps "$STEPS" \
@@ -67,6 +82,7 @@ CUDA_VISIBLE_DEVICES=2 python -m debugpy --listen 6001 --wait-for-client train_m
     --delta "$DELTA" \
     --use_sum "$USE_SUM" \
     --t "$T" \
+    --dsq_alpha "$DSQ_ALPHA" \
     --max_length "$MAX_LENGTH" \
     --train_batch_size "$BATCH_SIZE" \
     --logging_steps "$LOGGING_STEPS" \

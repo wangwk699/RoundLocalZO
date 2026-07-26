@@ -40,6 +40,123 @@ class roundSTE(torch.autograd.Function):
         # 反向传播：梯度直接通过，乘以1
         return grad_output
 
+class PWLQuantize(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, qmin, qmax):
+        ctx.save_for_backward(x)
+        ctx.qmin = qmin
+        ctx.qmax = qmax
+        return torch.round(x).clamp(qmin, qmax)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        mask = (x >= ctx.qmin) & (x <= ctx.qmax)
+        local_grad = mask.to(dtype=x.dtype)
+        return grad_output * local_grad, None, None
+
+
+class MADQuantize(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, qmin, qmax):
+        ctx.save_for_backward(x)
+        ctx.qmin = qmin
+        ctx.qmax = qmax
+        return torch.round(x).clamp(qmin, qmax)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        qmin = ctx.qmin
+        qmax = ctx.qmax
+
+        local_grad = torch.ones_like(x)
+        lower = x < qmin
+        upper = x > qmax
+        if lower.any():
+            local_grad[lower] = qmin / x[lower]
+        if upper.any():
+            local_grad[upper] = qmax / x[upper]
+
+        return grad_output * local_grad, None, None
+
+
+class DSQQuantize(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, qmin, qmax, dsq_alpha):
+        if not 0.0 < dsq_alpha < 0.5:
+            raise ValueError(
+                f"dsq_alpha must be in (0, 0.5), got {dsq_alpha}"
+            )
+        ctx.save_for_backward(x)
+        ctx.qmin = qmin
+        ctx.qmax = qmax
+        ctx.dsq_alpha = dsq_alpha
+        return torch.round(x).clamp(qmin, qmax)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (x,) = ctx.saved_tensors
+        alpha = ctx.dsq_alpha
+        beta = math.log(2.0 / alpha - 1.0)
+
+        boundary = torch.floor(x) + 0.5
+        z = beta * (x - boundary)
+        tanh_z = torch.tanh(z)
+        normalization = beta / (2.0 * math.tanh(beta / 2.0))
+        local_grad = normalization * (1.0 - tanh_z.square())
+
+        mask = (x >= ctx.qmin) & (x <= ctx.qmax)
+        local_grad = local_grad * mask.to(dtype=x.dtype)
+
+        return grad_output * local_grad, None, None, None
+
+
+class PWLModule(nn.Module):
+    def __init__(self, qmin, qmax):
+        super().__init__()
+        self.qmin = qmin
+        self.qmax = qmax
+
+    def forward(self, x):
+        return PWLQuantize.apply(x, self.qmin, self.qmax)
+
+    def extra_repr(self):
+        return f"qmin={self.qmin}, qmax={self.qmax}"
+
+
+class MADModule(nn.Module):
+    def __init__(self, qmin, qmax):
+        super().__init__()
+        self.qmin = qmin
+        self.qmax = qmax
+
+    def forward(self, x):
+        return MADQuantize.apply(x, self.qmin, self.qmax)
+
+    def extra_repr(self):
+        return f"qmin={self.qmin}, qmax={self.qmax}"
+
+
+class DSQModule(nn.Module):
+    def __init__(self, qmin, qmax, dsq_alpha):
+        super().__init__()
+        self.qmin = qmin
+        self.qmax = qmax
+        self.dsq_alpha = dsq_alpha
+
+    def forward(self, x):
+        return DSQQuantize.apply(
+            x, self.qmin, self.qmax, self.dsq_alpha
+        )
+
+    def extra_repr(self):
+        return (
+            f"qmin={self.qmin}, qmax={self.qmax}, "
+            f"dsq_alpha={self.dsq_alpha}"
+        )
+
+
 class UniformAffineQuantizer(nn.Module):
     def __init__(
         self,
@@ -56,7 +173,8 @@ class UniformAffineQuantizer(nn.Module):
         delta=None,  # 零阶梯度估计的扰动幅度
         t=None,
         method=None,
-        use_sum=None
+        use_sum=None,
+        dsq_alpha: float = 0.2,
     ):
         """
         support cluster quantize
@@ -115,8 +233,21 @@ class UniformAffineQuantizer(nn.Module):
         self.method = method
         self.t = t
         self.use_sum = use_sum
+        self.dsq_alpha = dsq_alpha
+        self.round_module_handles_clamp = False
 
-        if self.delta is not None and self.method == "Uniform":
+        if self.method == "PWL":
+            self.round_module = PWLModule(self.qmin, self.qmax)
+            self.round_module_handles_clamp = True
+        elif self.method == "MAD":
+            self.round_module = MADModule(self.qmin, self.qmax)
+            self.round_module_handles_clamp = True
+        elif self.method == "DSQ":
+            self.round_module = DSQModule(
+                self.qmin, self.qmax, self.dsq_alpha
+            )
+            self.round_module_handles_clamp = True
+        elif self.delta is not None and self.method == "Uniform":
             self.round_module = UniformModule(delta, use_sum)
             # self._round_func = Uniform.apply(delta)
         elif self.delta is not None and self.method == "Normal":
@@ -169,14 +300,22 @@ class UniformAffineQuantizer(nn.Module):
             dim1, dim2 = x.shape
             x = x.reshape(-1, self.group_size)
 
-        x_int = self.round_module.forward(x * (1.0 / eff_scale))
+        normalized_x = x * (1.0 / eff_scale)
+        x_int = self.round_module.forward(normalized_x)
         # x_int = self.round_module.forward(x * (1.0 / scale))
         # x_int = self._round_func(x / scale)
         # x_int = round_ste(x / eff_scale)
 
-        if round_zero_point is not None:
-            x_int = x_int.add(round_zero_point)
-        x_int = x_int.clamp(self.qmin, self.qmax)
+        if self.round_module_handles_clamp:
+            if round_zero_point is not None:
+                raise NotImplementedError(
+                    f"{self.method} full round+clamp surrogate currently "
+                    "supports disable_zero_point=True only"
+                )
+        else:
+            if round_zero_point is not None:
+                x_int = x_int.add(round_zero_point)
+            x_int = x_int.clamp(self.qmin, self.qmax)
         x_dequant = x_int
         if round_zero_point is not None:
             x_dequant = x_dequant.sub(round_zero_point)

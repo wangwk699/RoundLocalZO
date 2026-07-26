@@ -170,6 +170,7 @@ class OurArguments(TrainingArguments):
     # ldx:add
     delta: float = 0.1
     t: float = 0.5
+    dsq_alpha: float = 0.2
     use_sum: bool = False
     train_batch_size: int = 4
 
@@ -292,7 +293,20 @@ class Framework:
         else:
             collator = DataCollatorForTokenClassification
 
-        if (self.args.trainer == 'STE' or self.args.trainer == 'HTGE' or self.args.trainer == 'Uniform' or self.args.trainer == 'Normal' or self.args.trainer == 'Laplace') and self.args.quant_method != '':
+        if (
+            self.args.trainer
+            in [
+                "STE",
+                "HTGE",
+                "Uniform",
+                "Normal",
+                "Laplace",
+                "PWL",
+                "MAD",
+                "DSQ",
+            ]
+            and self.args.quant_method != ""
+        ):
             assert self.args.quant_method in ['gptq', 'omni','aqlm']            
             from transformers import Trainer
             for name, param in self.model.named_parameters():
@@ -625,6 +639,31 @@ def main():
             param_dict['delta'] = args.delta
             param_dict['method'] = args.trainer
             param_dict['use_sum'] = args.use_sum
+
+    if args.trainer == 'PWL' or args.trainer == 'MAD':
+        quant_param_dicts = [
+            args.weight_quant_params,
+            args.act_quant_params,
+            args.q_quant_params,
+            args.k_quant_params,
+            args.v_quant_params,
+            args.p_quant_params
+        ]
+        for param_dict in quant_param_dicts:
+            param_dict['method'] = args.trainer
+
+    if args.trainer == 'DSQ':
+        quant_param_dicts = [
+            args.weight_quant_params,
+            args.act_quant_params,
+            args.q_quant_params,
+            args.k_quant_params,
+            args.v_quant_params,
+            args.p_quant_params
+        ]
+        for param_dict in quant_param_dicts:
+            param_dict['method'] = 'DSQ'
+            param_dict['dsq_alpha'] = args.dsq_alpha
 
 
 
