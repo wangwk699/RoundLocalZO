@@ -61,8 +61,8 @@ fi
 # 构建完整路径
 SAVE_DIR="./logs/log0/$MODEL-w${WBITS}a${ABITS}/$METHOD/$TASK/$MAX_LENGTH-STEPS-$STEPS-IR-$IR-$IR_scheduler-$Warmup_ratio-$DIR_SUFFIX"
 
-# --- 执行训练 ---
-CUDA_VISIBLE_DEVICES=2 python -m debugpy --listen 6001 --wait-for-client train_main.py \
+# --- 执行训练 ---  -m debugpy --listen 6001 --wait-for-client
+CUDA_VISIBLE_DEVICES=4 python train_main.py \
     --model "Qwen/$MODEL" \
     --epochs 0 \
     --q_output_dir "$SAVE_DIR" \

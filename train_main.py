@@ -47,7 +47,7 @@ class OurArguments(TrainingArguments):
 
     # Number of examples
     num_train: int = 1000  # TRAIN=1000
-    num_dev: int = 100  # DEV=100 (对于任务如 Copa，训练集小于1000样本时设置为100)
+    num_dev: int = 10  # DEV=100 (对于任务如 Copa，训练集小于1000样本时设置为100)
     num_eval: int = 1000  # EVAL=1000
 
     # Number of training sets (set to None if not specified)
